@@ -169,6 +169,17 @@ Verified on a 3-frame fixture: mapper 27,476 -> 28,784 cells, tracks stable
 at 12; benchmark totals identical inputs (367,878 pts); server frame advance
 matches the mapper's cell counts exactly (cross-binary determinism).
 
+## Addendum (2026-09-26): video frames drive the 3D and BEV views
+
+Video upload played but never produced visible output: frames only tinted
+existing LiDAR points, the BEV moved solely on LiDAR polls, and a missing
+`projectElementToThree` crashed every color-mode click. Now each video/camera
+frame is projected with the documented monocular depth model into a dedicated
+fuchsia 3D layer plus a BEV overlay with frustum outline (~1.4 s refresh,
+~2.4k points, estimate-labeled, never sent to the C++ grid). Verified with a
+headless DOM harness: projection populates 2,430 points with zero uncaught
+errors, with and without the WebGL engine.
+
 ## Addendum (2026-09-26): dashboard camera/upload failures fixed
 
 The C++ dashboard's camera and video-upload paths were completely broken by

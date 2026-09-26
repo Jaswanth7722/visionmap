@@ -1057,6 +1057,15 @@
             lidarPointCloud = new THREE.Points(lidarGeo, lidarMat);
             scene.add(lidarPointCloud);
 
+            // Camera-projected video points: SEPARATE layer fed by monocular
+            // depth ESTIMATES (not LiDAR). Hidden until the first video frame
+            // is projected; fuchsia so it never passes for a semantic class.
+            const camProjGeo = new THREE.BufferGeometry();
+            const camProjMat = new THREE.PointsMaterial({ size: 0.22, vertexColors: true, transparent: true, opacity: 0.85 });
+            cameraPointCloud = new THREE.Points(camProjGeo, camProjMat);
+            cameraPointCloud.visible = false;
+            scene.add(cameraPointCloud);
+
 
             // NOTE: No hardcoded road geometry. Road surface is class 0 (TERRAIN/Green) in the
             // authentic C++ PointNet++ point cloud. The GridHelper above provides spatial orientation.
@@ -1640,6 +1649,12 @@
                 clearInterval(frameUploadInterval);
                 frameUploadInterval = null;
             }
+            if (videoProjectInterval) {
+                clearInterval(videoProjectInterval);
+                videoProjectInterval = null;
+            }
+            videoPoints = [];
+            if (cameraPointCloud) cameraPointCloud.visible = false;
             if (webcamStream) {
                 webcamStream.getTracks().forEach(t => t.stop());
                 webcamStream = null;
@@ -1671,6 +1686,8 @@
 
         let webcamStreamInterval = null;
         let frameUploadInterval = null;
+        let videoProjectInterval = null;
+        let videoPoints = []; // Three.js-coord video projections (est. depth) for BEV/3D overlay
 
         // Off-canvas for RGB pixel sampling (used in True RGB mode)
         const offCanvas = document.createElement('canvas');
@@ -1684,6 +1701,13 @@
         uploadCanvas.width = 320;
         uploadCanvas.height = 240;
         const uploadCtx = uploadCanvas.getContext('2d');
+
+        // Dedicated small canvas for per-frame video depth projection.
+        // 160x90 keeps the projection under ~3000 points per refresh.
+        const projCanvas = document.createElement('canvas');
+        projCanvas.width = 160;
+        projCanvas.height = 90;
+        const projCtx = projCanvas.getContext('2d');
 
         // Send current video/camera frame as JPEG to C++ server
         async function sendFrameToServer(sourceElement) {
@@ -1726,10 +1750,70 @@
                 if (sourceElement.tagName === 'VIDEO' && (!sourceElement.videoWidth || sourceElement.paused)) return;
                 sendFrameToServer(sourceElement);
             }, 500);
+
+            // Video depth projection (~1.4 FPS): sample the CURRENT frame and
+            // rebuild the estimated-depth 3D layer + BEV overlay, so both
+            // views track the video instead of going static.
+            if (videoProjectInterval) clearInterval(videoProjectInterval);
+            videoProjectInterval = setInterval(() => {
+                if (!isWebcamRunning) return;
+                projectVideoFrameToPoints();
+                if (activeTab === 'BEV') render2DGrid();
+            }, 700);
+        }
+
+        // Projects the current video/camera frame into 3D with the documented
+        // monocular depth model (pixels lower in frame = closer). Geometry is
+        // ESTIMATED, never metric truth: the layer is fuchsia, counted
+        // separately in the HUD, and never sent to the C++ grid.
+        function projectVideoFrameToPoints() {
+            const src = webcamVideo;
+            if (!isWebcamRunning || !src || !src.videoWidth) return;
+            if (src.tagName === 'VIDEO' && src.paused) return;
+            if (typeof document !== 'undefined' && document.hidden) return;
+            try {
+                const W = projCanvas.width, H = projCanvas.height;
+                projCtx.drawImage(src, 0, 0, W, H);
+                const img = projCtx.getImageData(0, 0, W, H).data;
+                const pts = [];
+                const tan30 = Math.tan(Math.PI / 6);
+                for (let y = 0; y < H && pts.length < 3000; y += 2) {
+                    const v = y / (H - 1);
+                    const vNorm = Math.min(1.0, Math.max(0.05, (v - 0.35) / 0.65));
+                    const depth = 5.0 + 45.0 * (1.0 - vNorm);
+                    const height = -1.6 + (1.0 - vNorm) * 4.0;
+                    for (let x = 0; x < W && pts.length < 3000; x += 3) {
+                        const k = (y * W + x) * 4;
+                        const luma = (0.299 * img[k] + 0.587 * img[k + 1] + 0.114 * img[k + 2]) / 255.0;
+                        const u = (x / (W - 1)) * 2 - 1;
+                        const lateral = u * depth * tan30;
+                        // Three.js coords, same convention as lidarPoints
+                        pts.push({ x: -lateral, y: height, z: depth, luma: luma });
+                    }
+                }
+                videoPoints = pts;
+                if (webglReady() && cameraPointCloud) {
+                    const n = pts.length;
+                    const pos = new Float32Array(n * 3);
+                    const col = new Float32Array(n * 3);
+                    for (let i = 0; i < n; i++) {
+                        pos[i * 3] = pts[i].x;
+                        pos[i * 3 + 1] = pts[i].y;
+                        pos[i * 3 + 2] = pts[i].z;
+                        const b = 0.35 + 0.65 * pts[i].luma;
+                        col[i * 3] = b; col[i * 3 + 1] = 0.25 * b; col[i * 3 + 2] = b;
+                    }
+                    cameraPointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                    cameraPointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+                    cameraPointCloud.visible = n > 0;
+                }
+                updatePointsHud();
+            } catch (_) {}
         }
 
         function updatePointsHud() {
-            tagPointsCount.innerText = `POINTS: ${lidarPoints.length.toLocaleString()} (C++ LiDAR)`;
+            tagPointsCount.innerText = `POINTS: ${lidarPoints.length.toLocaleString()} (C++ LiDAR)` +
+                (videoPoints.length ? ` + ${videoPoints.length.toLocaleString()} video (est)` : '');
         }
 
         // Explicit 3D refresh from the current video/camera frame, used by the
@@ -1738,8 +1822,11 @@
         // it is a no-op instead of the ReferenceError the missing function
         // used to throw.
         function projectElementToThree(sourceElement) {
-            if (!webglReady() || !sourceElement) return;
-            updateLidarThreeGeometry();
+            if (!sourceElement) return;
+            // Refresh the estimated-depth projection from the current frame
+            // (safe without WebGL: guards live inside the projection itself).
+            projectVideoFrameToPoints();
+            if (activeTab === 'BEV') render2DGrid();
         }
 
         // Color Mode Buttons
@@ -1915,6 +2002,31 @@
                 });
             }
 
+            // ── Video-projected points (monocular depth ESTIMATE — not LiDAR) ──
+            // Same Three.js convention as above: screen_x from lateral x,
+            // screen_y from forward z. Fuchsia, distinct from every class.
+            let videoCount = 0;
+            if (videoPoints.length > 0) {
+                gridCtx.fillStyle = 'rgba(232,121,249,0.55)';
+                for (let i = 0; i < videoPoints.length; i++) {
+                    const p = videoPoints[i];
+                    const sx = cx + p.x * scale;
+                    const sy = cy - p.z * scale;
+                    if (sx < 0 || sx > w || sy < 0 || sy > h) continue;
+                    gridCtx.fillRect(sx - 1, sy - 1, 2, 2);
+                    videoCount++;
+                }
+                // Camera frustum outline (±30° FOV, estimated range)
+                gridCtx.strokeStyle = 'rgba(232,121,249,0.35)';
+                gridCtx.lineWidth = 1;
+                gridCtx.beginPath();
+                const fr = 55 * scale;
+                const fx = Math.tan(Math.PI / 6) * fr;
+                gridCtx.moveTo(cx, cy); gridCtx.lineTo(cx - fx, cy - fr);
+                gridCtx.moveTo(cx, cy); gridCtx.lineTo(cx + fx, cy - fr);
+                gridCtx.stroke();
+            }
+
             // ── Tracked vehicle bounding boxes with ID labels ──────────────────
             tracksData.forEach(tr => {
                 // tr.x = Three.js lateral,  tr.z = Three.js forward
@@ -1972,7 +2084,7 @@
             // ── Point-class breakdown HUD (top-left) ──────────────────────────
             const hudX = 10, hudY = 14;
             gridCtx.fillStyle = 'rgba(2,4,8,0.75)';
-            gridCtx.fillRect(hudX - 4, hudY - 12, 168, 60);
+            gridCtx.fillRect(hudX - 4, hudY - 12, 168, 76);
 
             gridCtx.font = 'bold 9px JetBrains Mono';
             gridCtx.fillStyle = 'rgba(255,255,255,0.5)';
@@ -1981,7 +2093,8 @@
             const classes = [
                 { col: '#10b981', label: `TERRAIN / ROAD`, count: terrainCount },
                 { col: '#00f3ff', label: `STATIC (structures)`, count: staticCount },
-                { col: '#f59e0b', label: `DYNAMIC (vehicles)`,  count: dynCount }
+                { col: '#f59e0b', label: `DYNAMIC (vehicles)`,  count: dynCount },
+                { col: '#e879f9', label: `VIDEO (est. depth)`,  count: videoCount }
             ];
             classes.forEach((c, i) => {
                 const y = hudY + 13 + i * 14;
