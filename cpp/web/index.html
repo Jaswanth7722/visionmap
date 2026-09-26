@@ -11,8 +11,8 @@
 <!-- Three.js & OrbitControls for Hardware-Accelerated 3D WebGL (vendored
      locally under cpp/web/vendor/ so the dashboard works with no internet;
      previously CDN-only, which broke all camera/upload paths offline) -->
-<script src="vendor/three.min.js"></script>
-<script src="vendor/OrbitControls.js"></script>
+<script src="vendor/three.min.js?v=20260926c"></script>
+<script src="vendor/OrbitControls.js?v=20260926c"></script>
 
     <style>
         :root {
@@ -959,6 +959,10 @@
         let scene, camera, renderer, controls;
         let lidarPointCloud, cameraPointCloud;
         let frustumWireframe, egoVehicleGroup, boundingBoxesGroup;
+
+        // Build stamp: shown in the runtime log on every load so a stale
+        // cached copy is identifiable instead of silently misbehaving.
+        const PS26053_BUILD = '2026-09-26e';
 
         // WebGL-engine guards: camera/video/upload paths must keep working
         // (preview, 2D BEV, HUD) even when Three.js failed to load, e.g. with
@@ -2126,7 +2130,7 @@
         window.addEventListener('DOMContentLoaded', () => {
             initThreeJS();
             enumerateVideoDevices();
-            appendLog('Hardware WebGL 3D Spatial Engine active. Fetching C++ pipeline data...', 'ok');
+            appendLog(`PS26053 frontend build ${PS26053_BUILD}. Fetching C++ pipeline data...`, 'ok');
             // Initial fetch + start live polling every 3.5 s
             fetchLidarBenchmarkScan().then(() => startLidarPolling());
         });
