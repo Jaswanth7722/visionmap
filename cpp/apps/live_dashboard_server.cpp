@@ -641,6 +641,9 @@ private:
         ss << "Content-Type: " << content_type << "\r\n";
         ss << "Access-Control-Allow-Origin: *\r\n";
         ss << "Connection: close\r\n";
+        // Demo dashboard + live API must never serve stale bytes: a cached
+        // copy of index.html once hid real fixes behind old JavaScript.
+        ss << "Cache-Control: no-store\r\n";
         ss << "Content-Length: " << body.size() << "\r\n\r\n";
         ss << body;
 

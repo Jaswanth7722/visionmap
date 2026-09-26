@@ -1654,6 +1654,7 @@
                 videoProjectInterval = null;
             }
             videoPoints = [];
+            projSilentFail = false;
             if (cameraPointCloud) cameraPointCloud.visible = false;
             if (webcamStream) {
                 webcamStream.getTracks().forEach(t => t.stop());
@@ -1688,6 +1689,7 @@
         let frameUploadInterval = null;
         let videoProjectInterval = null;
         let videoPoints = []; // Three.js-coord video projections (est. depth) for BEV/3D overlay
+        let projSilentFail = false; // one-time warn while streaming yields zero points
 
         // Off-canvas for RGB pixel sampling (used in True RGB mode)
         const offCanvas = document.createElement('canvas');
@@ -1759,6 +1761,17 @@
                 if (!isWebcamRunning) return;
                 projectVideoFrameToPoints();
                 if (activeTab === 'BEV') render2DGrid();
+                // Visible projection health: streaming with zero estimated
+                // points means frames never reach the projector (warn once).
+                if (videoPoints.length === 0) {
+                    if (!projSilentFail) {
+                        projSilentFail = true;
+                        appendLog('Video is streaming but projection yields no points — check video playback.', 'warn');
+                    }
+                } else if (projSilentFail) {
+                    projSilentFail = false;
+                    appendLog(`Video projection recovered (${videoPoints.length.toLocaleString()} pts).`, 'ok');
+                }
             }, 700);
         }
 
@@ -1792,6 +1805,10 @@
                     }
                 }
                 videoPoints = pts;
+                if (tagCamSensorStatus && isWebcamRunning) {
+                    tagCamSensorStatus.innerText =
+                        (isVideoMode ? 'VIDEO' : 'CAM') + `: ONLINE (${pts.length.toLocaleString()} pts est)`;
+                }
                 if (webglReady() && cameraPointCloud) {
                     const n = pts.length;
                     const pos = new Float32Array(n * 3);
@@ -1834,32 +1851,31 @@
         const btnModeSemantics = document.getElementById('btnModeSemantics');
         const btnModeElevation = document.getElementById('btnModeElevation');
 
-        btnModeRgb.addEventListener('click', () => {
-            colorMode = 'rgb';
-            btnModeRgb.classList.add('active');
-            btnModeSemantics.classList.remove('active');
-            btnModeElevation.classList.remove('active');
+        // Color Mode Buttons: one shared path so all three modes re-render
+        // identically and log what they show (a mode that silently rendered
+        // nothing used to be indistinguishable from a working one).
+        function applyColorMode(mode) {
+            colorMode = mode;
+            btnModeRgb.classList.toggle('active', mode === 'rgb');
+            btnModeSemantics.classList.toggle('active', mode === 'semantics');
+            btnModeElevation.classList.toggle('active', mode === 'elevation');
             updateLidarThreeGeometry();
             if (isWebcamRunning && webcamVideo) projectElementToThree(webcamVideo);
-        });
+            if (activeTab === 'BEV') render2DGrid();
+            let n0 = 0, n1 = 0, n2 = 0;
+            for (let i = 0; i < lidarPoints.length; i++) {
+                const c = lidarPoints[i].semClass;
+                if (c === 2) n2++; else if (c === 1) n1++; else n0++;
+            }
+            appendLog(`Color mode: ${mode} — ${lidarPoints.length.toLocaleString()} pts ` +
+                `(terrain ${n0.toLocaleString()} / static ${n1.toLocaleString()} / dynamic ${n2.toLocaleString()}).`, 'info');
+        }
 
-        btnModeSemantics.addEventListener('click', () => {
-            colorMode = 'semantics';
-            btnModeSemantics.classList.add('active');
-            btnModeRgb.classList.remove('active');
-            btnModeElevation.classList.remove('active');
-            updateLidarThreeGeometry();
-            if (isWebcamRunning && webcamVideo) projectElementToThree(webcamVideo);
-        });
+        btnModeRgb.addEventListener('click', () => applyColorMode('rgb'));
 
-        btnModeElevation.addEventListener('click', () => {
-            colorMode = 'elevation';
-            btnModeElevation.classList.add('active');
-            btnModeRgb.classList.remove('active');
-            btnModeSemantics.classList.remove('active');
-            updateLidarThreeGeometry();
-            if (isWebcamRunning && webcamVideo) projectElementToThree(webcamVideo);
-        });
+        btnModeSemantics.addEventListener('click', () => applyColorMode('semantics'));
+
+        btnModeElevation.addEventListener('click', () => applyColorMode('elevation'));
 
         // Tab Switching
         const tab3D = document.getElementById('tab3D');
