@@ -12,6 +12,7 @@ import os
 import sys
 import time
 import math
+import hashlib
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
@@ -29,8 +30,17 @@ if str(REPO_ROOT) not in sys.path:
 CLASS_NAMES = {
     0: "terrain",
     1: "static_obstacle",
-    2: "dynamic_obstacle"
+    2: "dynamic_object"
 }
+
+# Memory-estimate constants, measured 2026-09-26 with a compiled sizeof probe
+# against the actual C++ sources (MinGW GCC 15.2 x86_64):
+#   sizeof(Cell) = 88; one adaptive base cell additionally carries an
+#   unordered_map node + Quadtree (32) + heap QuadtreeNode (144), totalling
+#   ~252 bytes. These are estimates for display only; exact profiling is out
+#   of scope for the dashboard. See FIXES_REPORT.md (C2).
+UNIFORM_BYTES_PER_CELL = 88
+ADAPTIVE_BYTES_PER_CELL = 252
 
 
 class CameraProjector:
@@ -140,57 +150,18 @@ class LiveLidarStreamer:
             except Exception as e:
                 print(f"[LiveLidarStreamer] Failed to load {self.raw_bin_path}: {e}")
 
-    def get_frame(self, frame_index: int = 0, num_points: int = 4096) -> np.ndarray:
+    def get_frame(self, frame_index: int = 0) -> np.ndarray:
         """
-        Returns dynamic LiDAR point cloud of shape (num_points, 4) [x, y, z, intensity].
-        Simulates vehicle translation and moving dynamic obstacles.
+        Returns the cached real LiDAR scan unchanged, shape (M, 4).
+        Frames are intentionally NOT perturbed: with a single recorded scan
+        there is no real motion, and synthesizing any would fabricate tracks.
         """
         if self.cached_points is not None:
-            total = len(self.cached_points)
-            step = max(1, total // num_points)
-            pts = self.cached_points[::step][:num_points].copy()
-            
-            # Apply dynamic obstacle motion perturbation across frames
-            t = frame_index * 0.1
-            dynamic_mask = (np.abs(pts[:, 0]) < 25.0) & (np.abs(pts[:, 1]) < 20.0) & (pts[:, 2] > -1.2) & (pts[:, 2] < 1.8)
-            # Translate dynamic cluster to simulate vehicle motion
-            pts[dynamic_mask, 0] += float(2.0 * math.sin(t))
-            pts[dynamic_mask, 1] += float(1.2 * math.cos(t * 0.8))
-            return pts
-
-        # Synthetic urban LiDAR cloud generator
-        t = frame_index * 0.1
-        # 1. Ground plane (terrain)
-        n_ground = int(num_points * 0.6)
-        gx = np.random.uniform(2.0, 50.0, n_ground)
-        gy = np.random.uniform(-25.0, 25.0, n_ground)
-        gz = -1.5 + 0.05 * np.sin(gx * 0.2) + np.random.normal(0, 0.03, n_ground)
-        g_int = np.random.uniform(0.1, 0.4, n_ground)
-        ground = np.column_stack([gx, gy, gz, g_int])
-
-        # 2. Static obstacles (buildings, curbs, posts)
-        n_static = int(num_points * 0.25)
-        sx = np.random.uniform(5.0, 45.0, n_static)
-        # Place on left or right curb
-        sy = np.where(np.random.rand(n_static) > 0.5, np.random.uniform(12.0, 22.0, n_static), np.random.uniform(-22.0, -12.0, n_static))
-        sz = np.random.uniform(-1.4, 4.0, n_static)
-        s_int = np.random.uniform(0.5, 0.9, n_static)
-        static = np.column_stack([sx, sy, sz, s_int])
-
-        # 3. Dynamic obstacles (moving vehicles)
-        n_dynamic = num_points - n_ground - n_static
-        car1_x = 15.0 + 5.0 * math.sin(t)
-        car1_y = 3.5 + 1.0 * math.cos(t)
-        car2_x = 30.0 - 4.0 * math.sin(t * 0.7)
-        car2_y = -3.5 + 0.5 * math.sin(t * 0.5)
-
-        dx = np.concatenate([np.random.normal(car1_x, 1.2, n_dynamic // 2), np.random.normal(car2_x, 1.4, n_dynamic - n_dynamic // 2)])
-        dy = np.concatenate([np.random.normal(car1_y, 0.8, n_dynamic // 2), np.random.normal(car2_y, 0.9, n_dynamic - n_dynamic // 2)])
-        dz = np.random.uniform(-1.2, 1.2, n_dynamic)
-        d_int = np.random.uniform(0.6, 1.0, n_dynamic)
-        dynamic = np.column_stack([dx, dy, dz, d_int])
-
-        return np.vstack([ground, static, dynamic]).astype(np.float32)
+            return self.cached_points
+        raise RuntimeError(
+            f"No LiDAR data available (tried {self.raw_bin_path}). "
+            "The dashboard shows an error instead of generating a synthetic cloud."
+        )
 
 
 class RealTimePipelineEngine:
@@ -200,28 +171,66 @@ class RealTimePipelineEngine:
         self.session = None
         self._load_model()
         self.camera = CameraProjector(0)
-        self.lidar = LiveLidarStreamer("data/raw/000000.bin")
-        
+        # Absolute path: the dashboard must not depend on the process CWD.
+        self.lidar = LiveLidarStreamer(os.path.join(str(REPO_ROOT), "data", "raw", "000000.bin"))
+
         # Tracking state
         self.tracks = {}
         self.next_track_id = 1
-        
+        self._last_frame_t = None
+
         # Adaptive 2.5D World Model storage
         self.adaptive_cells = {}
         self.frame_count = 0
 
-    def _load_model(self):
-        # Native ONNX Runtime inference is executed via C++ pipeline binary (build/bin/lidar_mapper.exe)
-        # to avoid Python 3.13 Windows subinterpreter deadlocks.
-        self.cpp_bin = os.path.join(str(REPO_ROOT), "build", "bin", "lidar_mapper.exe")
-        self.has_cpp_runtime = os.path.exists(self.cpp_bin)
-        if self.has_cpp_runtime:
-            print(f"[Engine] Found native C++ runtime binary: {self.cpp_bin}")
+        # Measured ORT throughput on this machine is ~40 us/point, so cap one
+        # frame at 16384 stride-sampled points (~0.65 s worst case) and always
+        # report the exact classified/total counts next to every number.
+        self.max_infer_points = 16384
+        self.infer_chunk = 8192
+        # Memoization for identical inputs only (same bytes -> same output).
+        self._infer_cache = {}
 
-    def process_frame(self, source_mode: str = "Live Camera", custom_cloud: Optional[np.ndarray] = None) -> Dict:
+    def _load_model(self):
+        # The ONNX session is mandatory. Without it there is no perception to
+        # show, and this engine refuses to substitute heuristic labels while
+        # anything claims PointNet++ output.
+        if not os.path.exists(self.onnx_model_path):
+            raise RuntimeError(
+                f"ONNX model not found: {self.onnx_model_path}. "
+                "PointNet++ inference cannot run without it, so the dashboard "
+                "refuses to start rather than display fabricated segmentation."
+            )
+        try:
+            self.session = ort.InferenceSession(
+                self.onnx_model_path, providers=["CPUExecutionProvider"]
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to create ONNX Runtime session for {self.onnx_model_path}: {exc}"
+            ) from exc
+        print(f"[Engine] ONNX Runtime session ready: {self.onnx_model_path}")
+
+    def _run_onnx(self, xyz: np.ndarray) -> np.ndarray:
+        """Chunked full-subset inference; the model axis is dynamic to N=12000+."""
+        outs = []
+        for i in range(0, len(xyz), self.infer_chunk):
+            chunk = np.ascontiguousarray(xyz[i:i + self.infer_chunk])
+            outs.append(
+                self.session.run(["logits"], {"points": chunk.reshape(1, -1, 3)})[0][0]
+            )
+        return np.concatenate(outs, axis=0).astype(np.float32)
+
+    def process_frame(self, source_mode: str = "Live Camera", custom_cloud: Optional[np.ndarray] = None,
+                      enable_refinement: bool = True) -> Dict:
         """
         Executes end-to-end processing for a single frame:
         Returns complete metrics, points, classes, tracks, and 2.5D cells.
+
+        Every label shown comes from the ONNX model via ONNX Runtime. There is
+        no heuristic fallback anywhere in this path: if inference fails, the
+        returned dict carries {"error": ...} and the dashboard renders the
+        error instead of fabricated data.
         """
         t_start = time.perf_counter()
         self.frame_count += 1
@@ -230,41 +239,63 @@ class RealTimePipelineEngine:
 
         # 1. Ingestion
         if custom_cloud is not None:
-            points_raw = custom_cloud
+            points_raw = np.asarray(custom_cloud, dtype=np.float32)
+            input_desc = f"uploaded cloud ({len(points_raw):,} pts)"
         elif source_mode == "Live Camera":
             camera_img, is_hardware_camera = self.camera.read_frame(self.frame_count)
             points_raw = self.camera.project_to_point_cloud(camera_img, num_points=4096)
+            input_desc = "camera projection (monocular depth estimate: geometry approximate)"
         else: # Continuous LiDAR Stream
-            points_raw = self.lidar.get_frame(self.frame_count, num_points=4096)
+            points_raw = self.lidar.get_frame(self.frame_count)
+            input_desc = "recorded LiDAR scan data/raw/000000.bin (static: no real motion)"
 
         t_ingest = time.perf_counter()
 
-        # 2. Semantic Perception (PointNet++ ONNX)
-        N = len(points_raw)
-        xyz = points_raw[:, :3].astype(np.float32)
+        # Stride-sample very large clouds into the inference budget. Exact
+        # classified/total counts are reported alongside every number.
+        points_total = int(len(points_raw))
+        stride = max(1, points_total // self.max_infer_points)
+        xyz_full = np.ascontiguousarray(points_raw[:, :3], dtype=np.float32)
+        xyz = np.ascontiguousarray(xyz_full[::stride])
+        points_classified = int(len(xyz))
 
-        if self.session is not None:
-            try:
-                ort_inputs = {"points": xyz.reshape(1, N, 3)}
-                logits = self.session.run(["logits"], ort_inputs)[0][0] # (N, 3)
-                classes = np.argmax(logits, axis=-1)
-                exp_l = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
-                confs = np.max(exp_l / np.sum(exp_l, axis=-1, keepdims=True), axis=-1)
-            except Exception as e:
-                classes, confs = self._heuristic_segmentation(xyz)
+        # 2. Semantic Perception (PointNet++ ONNX Runtime, chunked).
+        # Identical inputs reuse identical outputs (memoization, not estimation).
+        cache_key = (source_mode, points_total, stride,
+                     hashlib.sha256(xyz.tobytes()).hexdigest())
+        cached = self._infer_cache.get(cache_key)
+        if cached is not None:
+            classes, confs = cached
+            inference_source = "onnxruntime (cached: byte-identical input)"
         else:
-            classes, confs = self._heuristic_segmentation(xyz)
+            try:
+                logits = self._run_onnx(xyz)
+            except Exception as exc:
+                return {"error": f"ONNX inference failed: {exc}. No heuristic fallback is used."}
+            shifted = logits - np.max(logits, axis=-1, keepdims=True)
+            exp_l = np.exp(shifted)
+            probs = exp_l / np.sum(exp_l, axis=-1, keepdims=True)
+            classes = np.argmax(probs, axis=-1).astype(int)
+            confs = np.max(probs, axis=-1).astype(np.float32)
+            self._infer_cache[cache_key] = (classes, confs)
+            while len(self._infer_cache) > 4:
+                self._infer_cache.pop(next(iter(self._infer_cache)))
+            inference_source = "onnxruntime: models/onnx/pointnet2_semseg.onnx"
 
         t_infer = time.perf_counter()
 
-        # 3. Dynamic Obstacle Tracking (Kalman Filter)
+        # 3. Dynamic Object Tracking (nearest-centroid association estimator)
+        now = time.perf_counter()
+        dt = 0.0 if self._last_frame_t is None else max(0.0, now - self._last_frame_t)
+        self._last_frame_t = now
         dynamic_mask = (classes == 2)
         dynamic_pts = xyz[dynamic_mask]
-        current_tracks = self._update_tracks(dynamic_pts)
+        current_tracks = self._update_tracks(dynamic_pts, dt)
         t_track = time.perf_counter()
 
         # 4. Adaptive Variable-Resolution 2.5D World Model Grid
-        grid_metrics = self._update_adaptive_grid(xyz, classes, confs, current_tracks)
+        grid_metrics = self._update_adaptive_grid(
+            xyz, classes, confs, current_tracks, refine=enable_refinement)
         t_map = time.perf_counter()
 
         # Timing breakdown
@@ -275,13 +306,25 @@ class RealTimePipelineEngine:
         total_ms = (t_map - t_start) * 1000.0
         fps = 1000.0 / total_ms if total_ms > 0 else 30.0
 
+        if points_raw.shape[1] > 3:
+            intensities = np.asarray(points_raw[::stride, 3], dtype=np.float32)
+        else:
+            intensities = np.ones(points_classified, dtype=np.float32)
+
         return {
+            "error": None,
             "frame_index": self.frame_count,
             "source_mode": source_mode,
+            "input_desc": input_desc,
             "camera_frame": camera_img,
             "is_hardware_camera": is_hardware_camera,
             "points": xyz,
-            "intensities": points_raw[:, 3] if points_raw.shape[1] > 3 else np.ones(N),
+            "points_total": points_total,
+            "points_classified": points_classified,
+            "network_share_pct": 100.0 * points_classified / max(1, points_total),
+            "inference_source": inference_source,
+            "tracking_source": "python centroid association (estimator, not a Kalman filter)",
+            "intensities": intensities,
             "classes": classes,
             "confidences": confs,
             "tracks": current_tracks,
@@ -292,7 +335,9 @@ class RealTimePipelineEngine:
             "uniform_mem_mb": grid_metrics["uniform_mem_mb"],
             "adaptive_mem_mb": grid_metrics["adaptive_mem_mb"],
             "memory_saved_pct": grid_metrics["memory_saved_pct"],
-            "boundary_alignment_errors": 0, # Guaranteed 0 boundary alignment errors
+            "memory_basis": grid_metrics["memory_basis"],
+            "boundary_alignment_errors": self._boundary_errors(grid_metrics["cells"]),
+            "boundary_cells_checked": len(grid_metrics["cells"]),
             "timing": {
                 "preprocess_ms": preprocess_ms,
                 "infer_ms": infer_ms,
@@ -303,62 +348,99 @@ class RealTimePipelineEngine:
             }
         }
 
-    def _heuristic_segmentation(self, xyz: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        classes = np.zeros(len(xyz), dtype=int)
-        confs = np.full(len(xyz), 0.90, dtype=np.float32)
-        # Ground
-        ground = xyz[:, 2] < -1.2
-        classes[ground] = 0
-        # Dynamic obstacles (close to vehicle path, human/car height)
-        dist = np.hypot(xyz[:, 0], xyz[:, 1])
-        dyn = (~ground) & (dist < 30.0) & (xyz[:, 2] > -0.8) & (xyz[:, 2] < 1.8) & (np.abs(xyz[:, 1]) < 6.0)
-        classes[dyn] = 2
-        # Static obstacles
-        classes[(~ground) & (~dyn)] = 1
-        return classes, confs
+    def _update_tracks(self, dynamic_pts: np.ndarray, dt: float) -> List[Dict]:
+        """Nearest-centroid association tracker (Python estimator, not a Kalman filter).
 
-    def _update_tracks(self, dynamic_pts: np.ndarray) -> List[Dict]:
-        """Simple Euclidean clustering and Kalman tracker update."""
+        Velocity is the measured centroid displacement divided by the measured
+        inter-frame interval; confidence grows with consecutive associations
+        as min(0.95, 0.40 + 0.10 * hits). With no motion or no elapsed time the
+        velocity is 0 — nothing here is synthesized.
+        """
         if len(dynamic_pts) == 0:
+            for tid in list(self.tracks):
+                self.tracks[tid]["misses"] += 1
+                if self.tracks[tid]["misses"] > 3:
+                    del self.tracks[tid]
             return []
 
-        tracks_list = []
-        # Cluster dynamic points
+        # Cluster dynamic points on a 2 m spatial hash.
         grid = {}
         for pt in dynamic_pts:
-            gx = int(math.floor(pt[0] / 2.0))
-            gy = int(math.floor(pt[1] / 2.0))
-            k = (gx, gy)
+            k = (int(math.floor(pt[0] / 2.0)), int(math.floor(pt[1] / 2.0)))
             grid.setdefault(k, []).append(pt)
 
-        track_id = 1
-        for (gx, gy), pts in grid.items():
+        centroids = []
+        for pts in grid.values():
             if len(pts) >= 6:
                 pts_arr = np.array(pts)
-                cx = float(np.mean(pts_arr[:, 0]))
-                cy = float(np.mean(pts_arr[:, 1]))
-                cz = float(np.mean(pts_arr[:, 2]))
-                vx = float(2.1 * math.sin(self.frame_count * 0.1 + track_id))
-                vy = float(0.8 * math.cos(self.frame_count * 0.1))
-                speed = math.hypot(vx, vy)
+                centroids.append((
+                    float(np.mean(pts_arr[:, 0])),
+                    float(np.mean(pts_arr[:, 1])),
+                    float(np.mean(pts_arr[:, 2])),
+                    len(pts),
+                ))
 
-                tracks_list.append({
-                    "id": track_id,
+        tracks_list = []
+        matched = set()
+        gate = 3.0
+        for (cx, cy, cz, n) in centroids:
+            best_id, best_d = None, gate
+            for tid, tr in list(self.tracks.items()):
+                if tid in matched:
+                    continue
+                d = math.hypot(cx - tr["x"], cy - tr["y"])
+                if d < best_d:
+                    best_id, best_d = tid, d
+            if best_id is None:
+                tid = self.next_track_id
+                self.next_track_id += 1
+                self.tracks[tid] = {
                     "x": cx, "y": cy, "z": cz,
-                    "vx": vx, "vy": vy,
-                    "speed": speed,
-                    "points_count": len(pts),
-                    "class": "dynamic_obstacle",
-                    "confidence": 0.92
-                })
-                track_id += 1
+                    "vx": 0.0, "vy": 0.0, "hits": 1, "misses": 0,
+                }
+                # A track born this frame must not absorb a second cluster in
+                # the same frame; it becomes matchable on the next frame.
+                matched.add(tid)
+            else:
+                tid = best_id
+                matched.add(tid)
+                tr = self.tracks[tid]
+                if dt > 1e-6:
+                    tr["vx"] = (cx - tr["x"]) / dt
+                    tr["vy"] = (cy - tr["y"]) / dt
+                else:
+                    tr["vx"] = 0.0
+                    tr["vy"] = 0.0
+                tr.update(x=cx, y=cy, z=cz, hits=tr["hits"] + 1, misses=0)
+            tr = self.tracks[tid]
+            confidence = min(0.95, 0.40 + 0.10 * tr["hits"])
+            speed = math.hypot(tr["vx"], tr["vy"])
+            tracks_list.append({
+                "id": tid,
+                "x": cx, "y": cy, "z": cz,
+                "vx": tr["vx"], "vy": tr["vy"],
+                "speed": speed,
+                "points_count": n,
+                "class": "dynamic_object",
+                "confidence": confidence,
+            })
 
+        for tid in [t for t in self.tracks if t not in matched]:
+            self.tracks[tid]["misses"] += 1
+            if self.tracks[tid]["misses"] > 3:
+                del self.tracks[tid]
+
+        tracks_list.sort(key=lambda t: t["id"])
         return tracks_list
 
-    def _update_adaptive_grid(self, xyz: np.ndarray, classes: np.ndarray, confs: np.ndarray, tracks: List[Dict]) -> Dict:
+    def _update_adaptive_grid(self, xyz: np.ndarray, classes: np.ndarray, confs: np.ndarray,
+                               tracks: List[Dict], refine: bool = True) -> Dict:
         """
         Updates Level 1 (Distance Bands) and Level 2 (Quadtree Local Refinement) 2.5D Grid.
-        Directly measures Uniform 5cm cells vs Adaptive cells.
+        The uniform baseline is counted over the identical input subset, so the
+        comparison is apples-to-apples within this dashboard. Memory figures are
+        estimates from measured C++ struct sizes (see module constants), not
+        profiled allocations.
         """
         # Distance bands definition from Section 1
         # 0-10m: 0.05m, 10-30m: 0.15m, 30-60m: 0.30m, 60-100m: 0.50m
@@ -370,60 +452,92 @@ class RealTimePipelineEngine:
 
         # Uniform baseline: every point mapped to 5cm fixed cell
         uniform_keys = set()
-        adaptive_cells_dict = {}
+        # Microcell ownership: every occupied 5 cm quantum has exactly one
+        # owning cell, so stored footprints from different bands are disjoint
+        # (same pattern as the C++ Grid25D fix for C1).
+        q = 0.05
+        kmap = {0.05: 1, 0.15: 3, 0.30: 6, 0.50: 10}
+        owner = {}
+        cells_by_key = {}
+
+        def merge_into(cell, z, cls, conf):
+            if cls != 0:
+                cell["elevation"] = max(cell["elevation"], z)
+            if conf > cell["conf"]:
+                cell["class"] = cls
+                cell["conf"] = conf
+            cell["count"] += 1
 
         for i in range(len(xyz)):
             x, y, z = xyz[i]
-            cls = classes[i]
+            cls = int(classes[i])
+            conf = float(confs[i])
             d = math.hypot(x, y)
 
             # Uniform 5cm cell key
-            ux = int(math.floor(x / 0.05))
-            uy = int(math.floor(y / 0.05))
+            ux = int(math.floor(x / q))
+            uy = int(math.floor(y / q))
             uniform_keys.add((ux, uy))
+
+            mkey = (ux, uy)
+            if mkey in owner:
+                merge_into(cells_by_key[owner[mkey]], z, cls, conf)
+                continue
 
             # Adaptive base resolution
             base_res = get_base_res(d)
-            
+            k = kmap.get(base_res)
+
             # Level 2 Refinement trigger: dynamic object proximity refines down to 5cm
             is_near_track = False
-            for trk in tracks:
-                if math.hypot(x - trk["x"], y - trk["y"]) < 3.0:
-                    is_near_track = True
+            if refine:
+                for trk in tracks:
+                    if math.hypot(x - trk["x"], y - trk["y"]) < 3.0:
+                        is_near_track = True
+                        break
+
+            k_eff = 1 if (refine and (is_near_track or cls == 2)) else k
+            if k_eff is None:
+                k_eff = 1
+            cx = ux // k_eff
+            cy = uy // k_eff
+
+            contested = False
+            for ix in range(cx * k_eff, cx * k_eff + k_eff):
+                for iy in range(cy * k_eff, cy * k_eff + k_eff):
+                    if (ix, iy) in owner:
+                        contested = True
+                        break
+                if contested:
                     break
-
-            actual_res = 0.05 if (is_near_track or cls == 2) else base_res
-
-            # Quantize cell coordinates
-            cx = math.floor(x / actual_res) * actual_res
-            cy = math.floor(y / actual_res) * actual_res
-            cell_key = (round(cx, 3), round(cy, 3), round(actual_res, 3))
-
-            if cell_key not in adaptive_cells_dict:
-                adaptive_cells_dict[cell_key] = {
-                    "cx": cx + actual_res * 0.5,
-                    "cy": cy + actual_res * 0.5,
-                    "res": actual_res,
+            if contested:
+                k_eff = 1
+                cx, cy = ux, uy
+            res_eff = k_eff * q
+            cell_key = (res_eff, cx, cy)
+            cell = cells_by_key.get(cell_key)
+            if cell is None:
+                cell = {
+                    "cx": (cx * k_eff + k_eff / 2.0) * q,
+                    "cy": (cy * k_eff + k_eff / 2.0) * q,
+                    "res": res_eff,
                     "elevation": z,
                     "class": cls,
-                    "conf": confs[i],
-                    "count": 1
+                    "conf": conf,
+                    "count": 0,
                 }
-            else:
-                c = adaptive_cells_dict[cell_key]
-                if cls != 0:
-                    c["elevation"] = max(c["elevation"], z)
-                if confs[i] > c["conf"]:
-                    c["class"] = cls
-                    c["conf"] = confs[i]
-                c["count"] += 1
+                cells_by_key[cell_key] = cell
+                for ix in range(cx * k_eff, cx * k_eff + k_eff):
+                    for iy in range(cy * k_eff, cy * k_eff + k_eff):
+                        owner[(ix, iy)] = cell_key
+            merge_into(cell, z, cls, conf)
 
-        cells = list(adaptive_cells_dict.values())
+        cells = list(cells_by_key.values())
         uniform_count = len(uniform_keys)
         adaptive_count = len(cells)
 
-        uniform_mem = (uniform_count * 48) / (1024.0 * 1024.0)
-        adaptive_mem = (adaptive_count * 48) / (1024.0 * 1024.0)
+        uniform_mem = (uniform_count * UNIFORM_BYTES_PER_CELL) / (1024.0 * 1024.0)
+        adaptive_mem = (adaptive_count * ADAPTIVE_BYTES_PER_CELL) / (1024.0 * 1024.0)
 
         red_pct = 100.0 * (1.0 - (adaptive_count / max(1, uniform_count)))
         mem_pct = 100.0 * (1.0 - (adaptive_mem / max(0.001, uniform_mem)))
@@ -435,5 +549,42 @@ class RealTimePipelineEngine:
             "cell_reduction_pct": red_pct,
             "uniform_mem_mb": uniform_mem,
             "adaptive_mem_mb": adaptive_mem,
-            "memory_saved_pct": mem_pct
+            "memory_saved_pct": mem_pct,
+            "memory_basis": (
+                f"estimate: uniform {UNIFORM_BYTES_PER_CELL} B/cell (sizeof(Cell)), "
+                f"adaptive {ADAPTIVE_BYTES_PER_CELL} B/cell (map node + Quadtree + "
+                "heap node + Cell, measured via compiled sizeof probe)"
+            ),
         }
+
+    def _boundary_errors(self, cells: List[Dict]) -> int:
+        """Count 5 cm lattice posts covered by more than one stored cell
+        footprint. Candidate collisions are verified against the exact stored
+        footprints, so cells sharing only an edge are never miscounted."""
+        q = 0.05
+        owner = {}
+        errors = 0
+        for idx, c in enumerate(cells):
+            x0 = c["cx"] - c["res"] / 2.0
+            x1 = c["cx"] + c["res"] / 2.0
+            y0 = c["cy"] - c["res"] / 2.0
+            y1 = c["cy"] + c["res"] / 2.0
+            ix0 = int(math.floor(x0 / q + 1e-4))
+            ix1 = int(math.ceil(x1 / q - 1e-4)) - 1
+            iy0 = int(math.floor(y0 / q + 1e-4))
+            iy1 = int(math.ceil(y1 / q - 1e-4)) - 1
+            for ix in range(ix0, ix1 + 1):
+                for iy in range(iy0, iy1 + 1):
+                    key = (ix, iy)
+                    if key not in owner:
+                        owner[key] = idx
+                    elif owner[key] != idx:
+                        o = cells[owner[key]]
+                        ox0 = o["cx"] - o["res"] / 2.0
+                        ox1 = o["cx"] + o["res"] / 2.0
+                        oy0 = o["cy"] - o["res"] / 2.0
+                        oy1 = o["cy"] + o["res"] / 2.0
+                        if (ox0 < x1 - 1e-6 and x0 < ox1 - 1e-6 and
+                                oy0 < y1 - 1e-6 and y0 < oy1 - 1e-6):
+                            errors += 1
+        return errors

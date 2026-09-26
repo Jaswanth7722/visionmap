@@ -10,9 +10,9 @@ from typing import Dict, List
 
 
 CLASS_COLOR_MAP = {
-    0: ("#708090", "Terrain"),
-    1: ("#E63946", "Static Obstacle"),
-    2: ("#2A9D8F", "Dynamic Obstacle")
+    0: ("#10B981", "Terrain"),
+    1: ("#22D3EE", "Static Obstacle"),
+    2: ("#F59E0B", "Dynamic Object")
 }
 
 
@@ -164,8 +164,8 @@ def build_25d_bev_figure(cells: List[Dict], tracks: List[Dict]) -> go.Figure:
             ))
 
     fig.update_layout(
-        xaxis=dict(title='Forward X (m)', range=[-5, 55], gridcolor="#2A324B"),
-        yaxis=dict(title='Lateral Y (m)', range=[-35, 35], gridcolor="#2A324B"),
+        xaxis=dict(title='Forward X (m)', range=[-55, 55], gridcolor="#2A324B"),
+        yaxis=dict(title='Lateral Y (m)', range=[-55, 55], gridcolor="#2A324B"),
         margin=dict(l=0, r=0, b=0, t=30),
         paper_bgcolor="#0E1117",
         plot_bgcolor="#111625",
@@ -184,7 +184,7 @@ def build_25d_bev_figure(cells: List[Dict], tracks: List[Dict]) -> go.Figure:
 
 def build_latency_breakdown_figure(timing: Dict[str, float]) -> go.Figure:
     """Builds horizontal bar chart of stage-by-stage latencies."""
-    stages = ["Preprocessing", "PointNet++ ONNX", "Kalman Tracking", "2.5D Mapping"]
+    stages = ["Preprocessing", "PointNet++ ONNX", "Tracking (assoc.)", "2.5D Mapping"]
     times = [
         timing.get("preprocess_ms", 0.0),
         timing.get("infer_ms", 0.0),

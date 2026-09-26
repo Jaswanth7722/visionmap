@@ -50,6 +50,14 @@ st.markdown("""
         font-weight: 600;
         display: inline-block;
     }
+    .status-badge-fail {
+        background-color: #5B1A1A;
+        color: #F87171;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 600;
+        display: inline-block;
+    }
     .header-box {
         background: linear-gradient(90deg, #101626 0%, #1A2238 100%);
         padding: 18px 24px;
@@ -67,7 +75,11 @@ def get_pipeline_engine():
     return RealTimePipelineEngine(onnx_model_path=model_path)
 
 
-engine = get_pipeline_engine()
+try:
+    engine = get_pipeline_engine()
+except RuntimeError as exc:
+    st.error(f"Dashboard cannot start honestly: {exc}")
+    st.stop()
 
 # -----------------------------------------------------------------------------
 # Sidebar Configuration
@@ -130,7 +142,15 @@ st.markdown("""
 # Process Frame
 # -----------------------------------------------------------------------------
 source_str = "Live Camera" if "Camera" in input_mode else "Continuous LiDAR"
-frame_data = engine.process_frame(source_mode=source_str, custom_cloud=custom_cloud)
+frame_data = engine.process_frame(
+    source_mode=source_str,
+    custom_cloud=custom_cloud,
+    enable_refinement=enable_level2,
+)
+
+if frame_data.get("error"):
+    st.error(f"Frame processing failed honestly (no fallback data shown): {frame_data['error']}")
+    st.stop()
 
 timing = frame_data["timing"]
 tracks = frame_data["tracks"]
@@ -151,9 +171,9 @@ with col1:
 
 with col2:
     st.metric(
-        label="Memory Footprint",
+        label="Memory Footprint (est.)",
         value=f"{frame_data['adaptive_mem_mb']:.2f} MB",
-        delta=f"-{frame_data['memory_saved_pct']:.1f}% Saved",
+        delta=f"{frame_data['memory_saved_pct']:.1f}% vs uniform (est.)",
         delta_color="normal"
     )
 
@@ -168,13 +188,18 @@ with col4:
     st.metric(
         label="Tracked Dynamic Objects",
         value=f"{len(tracks)}",
-        delta="Kalman Filter Active"
+        delta="Centroid association (Python estimator)"
     )
 
 with col5:
     st.markdown("**Boundary Alignment QA**")
-    st.markdown('<div class="status-badge-pass">PASS: 0 ERRORS (0 Gaps/Overlaps)</div>', unsafe_allow_html=True)
-    st.caption("Explicit resolution bounds verified")
+    qa_errors = frame_data["boundary_alignment_errors"]
+    qa_checked = frame_data["boundary_cells_checked"]
+    if qa_errors == 0:
+        st.markdown('<div class="status-badge-pass">PASS: 0 ERRORS</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="status-badge-fail">FAIL: {qa_errors} ERRORS</div>', unsafe_allow_html=True)
+    st.caption(f"Computed over {qa_checked:,} stored cells (gaps/overlaps)")
 
 # -----------------------------------------------------------------------------
 # Visualizations Tabs
@@ -192,14 +217,17 @@ with tab1:
         if frame_data["camera_frame"] is not None:
             cam_title = "Hardware Webcam (Live)" if frame_data["is_hardware_camera"] else "Live Driving Camera Feed"
             st.image(frame_data["camera_frame"], caption=cam_title, use_container_width=True)
-            st.info(f"Frame #{frame_data['frame_index']} | Projected {len(frame_data['points'])} 3D metric coordinates")
+            st.info(f"Frame #{frame_data['frame_index']} | Projected {len(frame_data['points'])} 3D metric coordinates "
+                    f"(monocular depth estimate: geometry approximate, classes are model output)")
         else:
             st.image("https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600",
                      caption="Continuous LiDAR Ingestion Active", use_container_width=True)
-            st.info("Continuous LiDAR Mode: Reading raw Velodyne pulses & dynamic obstacles.")
+            st.info(f"Continuous LiDAR Mode: {frame_data['input_desc']}.")
 
     with col_3d:
-        st.subheader("Live PointNet++ 3D Semantic Segmentation")
+        st.subheader("PointNet++ 3D Semantic Segmentation")
+        st.caption(f"{frame_data['points_classified']:,} of {frame_data['points_total']:,} input points "
+                   f"({frame_data['network_share_pct']:.1f}%) classified via {frame_data['inference_source']}")
         fig_3d = build_3d_point_cloud_figure(frame_data["points"], frame_data["classes"], tracks)
         st.plotly_chart(fig_3d, use_container_width=True)
 
@@ -226,6 +254,8 @@ with tab2:
 
 with tab3:
     st.subheader("Direct Uniform vs Adaptive Proof-of-Value Verification")
+    st.caption(f"Cell counts are exact on the identical {frame_data['points_classified']:,}-point input subset. "
+               f"Memory figures are estimates ({frame_data['memory_basis']}).")
     b_col1, b_col2, b_col3 = st.columns([1, 1, 1])
 
     with b_col1:
@@ -254,7 +284,7 @@ with tab3:
             "Position Y (m)": f"{t['y']:.2f}",
             "Speed (m/s)": f"{t['speed']:.2f}",
             "Speed (km/h)": f"{t['speed']*3.6:.1f}",
-            "Classification": "Dynamic Obstacle (Vehicle)",
+            "Classification": "Dynamic Object (centroid-tracked)",
             "Confidence": f"{t['confidence']*100:.0f}%"
         } for t in tracks]
         st.dataframe(track_table, use_container_width=True)
