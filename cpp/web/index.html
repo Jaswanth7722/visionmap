@@ -938,6 +938,9 @@
         let gridCells = [];     // Active 2.5D cells from C++ Quadtree Grid
         let tracksData = [];    // Kalman tracked objects from C++ tracker
         let lastFrameIdx = null; // last frame announced (stream visibility)
+        let camTracksData = []; // Video-pipeline tracks (estimated geometry)
+        let camCellsData = [];  // Video-pipeline grid cells (estimated geometry)
+        let lastCamKey = '';
 
         // DOM elements
         const webcamVideo = document.getElementById('webcamVideo');
@@ -1257,7 +1260,57 @@
             if (lidarPollTimer) clearInterval(lidarPollTimer);
             lidarPollTimer = setInterval(() => {
                 fetchLidarBenchmarkScan();
+                fetchCameraScan();
             }, 3500);
+        }
+
+        // Video-pipeline product: real detections + grid cells computed
+        // server-side from uploaded frames (estimated geometry). Polled only
+        // while streaming; silent when the server has processed no frames.
+        async function fetchCameraScan() {
+            if (!isWebcamRunning) {
+                if (camTracksData.length || camCellsData.length) {
+                    camTracksData = [];
+                    camCellsData = [];
+                    refreshCamViews();
+                }
+                return;
+            }
+            try {
+                const resp = await fetch('/api/camera/scan');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (data.status !== 'ok') {
+                    if (camTracksData.length || camCellsData.length) {
+                        camTracksData = [];
+                        camCellsData = [];
+                        refreshCamViews();
+                    }
+                    return;
+                }
+                camTracksData = (data.tracks || []).map(t => ({
+                    id: t.id, cls: 'Vehicle (video)',
+                    x: -t.y, y: t.z || 0, z: t.x,
+                    w: t.width || 2.0, l: t.length || 4.5, h: 1.6,
+                    vx: t.vx || 0, vy: t.vy || 0
+                }));
+                camCellsData = data.cells || [];
+                refreshCamViews();
+                const m = data.metrics;
+                const key = `${camTracksData.length}/${camCellsData.length}`;
+                if (key !== lastCamKey) {
+                    lastCamKey = key;
+                    appendLog(`Video pipeline: ${m.active_tracks} tracks | ` +
+                        `${m.active_cells} cells | ${m.inference_network_points} net / ` +
+                        `${m.inference_fallback_points} fallback (estimated geometry).`, 'ok');
+                }
+            } catch (_) {}
+        }
+
+        function refreshCamViews() {
+            updateTrackBoundingBoxes();
+            updateTracksTable();
+            if (activeTab === 'BEV') render2DGrid();
         }
 
         function updateLidarThreeGeometry() {
@@ -1358,6 +1411,16 @@
                 box.position.set(tr.x, (tr.y || -0.8) + (tr.h || 1.6) / 2, tr.z);
                 boundingBoxesGroup.add(box);
             });
+            // Video-pipeline tracks: real tracker output on estimated
+            // geometry — fuchsia so they never pass for metric tracks.
+            camTracksData.forEach(tr => {
+                const boxGeo  = new THREE.BoxGeometry(tr.w || 2.0, tr.h || 1.6, tr.l || 4.5);
+                const edgeGeo = new THREE.EdgesGeometry(boxGeo);
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0xe879f9, linewidth: 2 });
+                const box     = new THREE.LineSegments(edgeGeo, edgeMat);
+                box.position.set(tr.x, (tr.y || 0) + (tr.h || 1.6) / 2, tr.z);
+                boundingBoxesGroup.add(box);
+            });
         }
 
         function updateTracksTable() {
@@ -1365,15 +1428,16 @@
             const tagActive = document.getElementById('tagActiveTracks');
             if (!tbody) return;
 
-            if (tracksData.length === 0) {
+            const allTracks = tracksData.concat(camTracksData);
+            if (allTracks.length === 0) {
                 tbody.innerHTML = '<tr id="tracks-empty-row"><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">No tracks detected</td></tr>';
                 if (tagActive) tagActive.innerText = '0 ACTIVE';
                 return;
             }
 
-            if (tagActive) tagActive.innerText = `${tracksData.length} ACTIVE`;
+            if (tagActive) tagActive.innerText = `${allTracks.length} ACTIVE`;
 
-            tbody.innerHTML = tracksData.map(tr => {
+            tbody.innerHTML = allTracks.map(tr => {
                 // Compute range (distance from ego)
                 const range = Math.sqrt(tr.z * tr.z + tr.x * tr.x).toFixed(1);
                 // Speed from velocity components (m/s → km/h)
@@ -1382,8 +1446,9 @@
                 // Heading angle
                 const heading  = (tr.vx || 0) !== 0 ? (Math.atan2(tr.vx, tr.vy) * 180 / Math.PI).toFixed(1) : '0.0';
                 const headSign = parseFloat(heading) >= 0 ? '+' : '';
+                const isVideo = (tr.cls || '').indexOf('(video)') >= 0;
                 return `<tr>
-                    <td style="color:var(--cyan);">#${tr.id}</td>
+                    <td style="color:${isVideo ? '#e879f9' : 'var(--cyan)'};">#${tr.id}</td>
                     <td>${tr.cls || 'Vehicle'}</td>
                     <td>${range}m</td>
                     <td>${speedKph} km/h</td>
@@ -2058,7 +2123,7 @@
             // Same Three.js convention as above: screen_x from lateral x,
             // screen_y from forward z. Fuchsia, distinct from every class.
             let videoCount = 0;
-            if (videoPoints.length > 0) {
+            if (videoPoints.length > 0 && camCellsData.length === 0) {
                 gridCtx.fillStyle = 'rgba(232,121,249,0.55)';
                 for (let i = 0; i < videoPoints.length; i++) {
                     const p = videoPoints[i];
@@ -2077,6 +2142,25 @@
                 gridCtx.moveTo(cx, cy); gridCtx.lineTo(cx - fx, cy - fr);
                 gridCtx.moveTo(cx, cy); gridCtx.lineTo(cx + fx, cy - fr);
                 gridCtx.stroke();
+            }
+
+            // ── Video-pipeline grid cells (classified server-side from video
+            // frames: real labels/tracks, estimated geometry). Class colors
+            // with a fuchsia edge so they never pass for metric cells.
+            let camCellCount = 0;
+            for (let i = 0; i < camCellsData.length; i++) {
+                const cell = camCellsData[i];
+                const sx = cx - cell.y * scale;
+                const sy = cy - cell.x * scale;
+                if (sx < 0 || sx > w || sy < 0 || sy > h) continue;
+                const sz = Math.max(3, cell.res * scale * 0.9);
+                gridCtx.fillStyle = cell.class === 2 ? 'rgba(245,158,11,0.55)' :
+                    (cell.class === 1 ? 'rgba(0,243,255,0.45)' : 'rgba(16,185,129,0.40)');
+                gridCtx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
+                gridCtx.strokeStyle = 'rgba(232,121,249,0.8)';
+                gridCtx.lineWidth = 1;
+                gridCtx.strokeRect(sx - sz / 2, sy - sz / 2, sz, sz);
+                camCellCount++;
             }
 
             // ── Tracked vehicle bounding boxes with ID labels ──────────────────
@@ -2113,6 +2197,20 @@
                 }
             });
 
+            // ── Video-pipeline tracks (fuchsia boxes, estimated geometry) ──
+            camTracksData.forEach(tr => {
+                const sx = cx + tr.x * scale;
+                const sy = cy - tr.z * scale;
+                const bw = (tr.w || 2.0) * scale;
+                const bl = (tr.l || 4.5) * scale;
+                gridCtx.strokeStyle = '#e879f9';
+                gridCtx.lineWidth = 2;
+                gridCtx.strokeRect(sx - bw / 2, sy - bl / 2, bw, bl);
+                gridCtx.fillStyle = '#e879f9';
+                gridCtx.font = 'bold 9px JetBrains Mono';
+                gridCtx.fillText(`V${tr.id}`, sx - bw/2, sy - bl/2 - 3);
+            });
+
             // ── Ego vehicle symbol ─────────────────────────────────────────────
             gridCtx.shadowColor = '#00f3ff';
             gridCtx.shadowBlur = 14;
@@ -2136,7 +2234,7 @@
             // ── Point-class breakdown HUD (top-left) ──────────────────────────
             const hudX = 10, hudY = 14;
             gridCtx.fillStyle = 'rgba(2,4,8,0.75)';
-            gridCtx.fillRect(hudX - 4, hudY - 12, 168, 76);
+            gridCtx.fillRect(hudX - 4, hudY - 12, 168, 90);
 
             gridCtx.font = 'bold 9px JetBrains Mono';
             gridCtx.fillStyle = 'rgba(255,255,255,0.5)';
@@ -2146,7 +2244,8 @@
                 { col: '#10b981', label: `TERRAIN / ROAD`, count: terrainCount },
                 { col: '#00f3ff', label: `STATIC (structures)`, count: staticCount },
                 { col: '#f59e0b', label: `DYNAMIC (vehicles)`,  count: dynCount },
-                { col: '#e879f9', label: `VIDEO (est. depth)`,  count: videoCount }
+                { col: '#e879f9', label: `VIDEO (est. depth)`,  count: videoCount },
+                { col: '#e879f9', label: `CAM-GRID (video est)`, count: camCellCount }
             ];
             classes.forEach((c, i) => {
                 const y = hudY + 13 + i * 14;

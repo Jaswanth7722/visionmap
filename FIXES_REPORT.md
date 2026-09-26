@@ -197,6 +197,21 @@ replacing the static `POINTS: 8,175` placeholder with a live value. Verified
 with a headless DOM harness in both worlds (engine present/absent × camera
 allowed/denied): zero uncaught errors, honest alerts only.
 
+## Addendum (2026-09-26): video frames run real detection and mapping
+
+Video upload played but produced no detections and no map cells: frames only
+tinted pixels while the C++ pipeline sat idle on zero LiDAR scans. Now every
+uploaded `image/*` frame is JPEG/PNG-decoded (vendored `stb_image.h`),
+projected with the documented monocular model (`CameraIngest`, unit-tested),
+and run through a DEDICATED camera pipeline instance — real ONNX labels,
+real tracks, real grid cells, throttled to one frame per 2 s with
+single-flight and wall-measured timestamps. Served at `GET /api/camera/scan`
+with an explicit `"source": "video-estimated-depth"` marker; the dashboard
+renders camera tracks (fuchsia), camera grid cells (class colors, fuchsia
+edge), and labeled table rows, keeping them visually and textually distinct
+from the metric LiDAR map they never merge into. Verified live: a car photo
+yields 2,592 network labels, 2,691 cells, 8 tracks at conf 0.5 in ~180 ms.
+
 ## Addendum (2026-09-26): bundled sample dataset removed
 
 `data/raw/000000.bin` was deleted at the operator's request: no sample data

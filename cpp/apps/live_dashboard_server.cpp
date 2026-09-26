@@ -8,6 +8,7 @@
 #include <psapi.h>
 
 #include "ps26053/io/lidar_io.hpp"
+#include "ps26053/io/camera_ingest.hpp"
 #include "ps26053/runtime/pipeline.hpp"
 
 #include <iostream>
@@ -67,6 +68,7 @@ public:
           watch_interval_sec_(watch_interval_sec > 0 ? watch_interval_sec : 5),
           loop_enabled_(loop_enabled) {
         pipeline_ = std::make_unique<ps26053::MappingPipeline>("models/onnx/pointnet2_semseg.onnx");
+        camera_pipeline_ = std::make_unique<ps26053::MappingPipeline>("models/onnx/pointnet2_semseg.onnx");
     }
 
     bool start() {
@@ -86,6 +88,16 @@ public:
         // H3: behavior comes from config/*.yaml (compiled defaults apply
         // loudly only when the files are missing or malformed).
         pipeline_->loadConfig("config");
+
+        // Camera pipeline: same config, separate state (see member comment).
+        // A second ORT session doubles model residency; the alternative
+        // (sharing one session across pipelines) would couple their lifetimes.
+        std::cout << "[Pipeline] Initializing camera perception pipeline...\n";
+        if (!camera_pipeline_->initialize()) {
+            std::cerr << "[Warn] Camera pipeline model missing: video frames get "
+                      << "counted fallback labels, same as the LiDAR path.\n";
+        }
+        camera_pipeline_->loadConfig("config");
 
         // Preload LiDAR scan(s): single file or sequence directory. Frame
         // timestamps assume the nominal 10 Hz from config/lidar.yaml.
@@ -204,6 +216,21 @@ private:
     size_t loop_wraps_{0};
     double loop_time_offset_{0.0};
     std::set<std::string> known_scans_;
+    // Dedicated camera pipeline: video frames run the REAL network, tracker
+    // and grid — but in an instance separate from the LiDAR one, because
+    // monocular geometry is estimated and must never merge into the metric
+    // map. Guarded by cam_mtx_ (never hold mtx_ while taking it).
+    std::unique_ptr<ps26053::MappingPipeline> camera_pipeline_;
+    ps26053::FrameMetrics cam_metrics_;
+    bool cam_processed_{false};
+    std::atomic<bool> cam_processing_{false};
+    bool cam_clock_started_{false};
+    std::chrono::steady_clock::time_point cam_clock_start_{};
+    std::chrono::steady_clock::time_point last_cam_process_{};
+    std::mutex cam_mtx_;
+    // At most one camera frame through inference every 2 s: uploads arrive
+    // faster than CPU inference, and latest-frame-wins beats queue meltdown.
+    static constexpr double kMinCamIntervalSec = 2.0;
 
     std::atomic<bool> camera_active_{false};
     std::atomic<int> camera_frame_count_{0};
@@ -287,6 +314,8 @@ private:
             serveApiCameraLatestJpg(sock);
         } else if (method == "GET" && pure_path == "/api/camera/latest") {
             serveApiCameraLatest(sock);
+        } else if (method == "GET" && pure_path == "/api/camera/scan") {
+            serveApiCameraScan(sock);
         } else if (method == "POST" && pure_path == "/api/camera/frame") {
             serveApiCameraFrame(sock, request);
         } else if (method == "POST" && pure_path == "/api/reset") {
@@ -392,7 +421,12 @@ private:
         }
 
         std::string body = request.substr(body_pos + 4);
-        
+
+        // Any image/* body is stored AND offered to the camera pipeline;
+        // anything else keeps the legacy base64/JSON view-only path.
+        bool is_image = request.find("Content-Type: image/") != std::string::npos ||
+                        request.find("content-type: image/") != std::string::npos;
+        std::string pending;
         {
             std::lock_guard<std::mutex> lock(mtx_);
             camera_active_ = true;
@@ -400,10 +434,9 @@ private:
             last_cam_time_ = std::chrono::steady_clock::now();
             remote_client_ip_ = client_ip;
 
-            // Check Content-Type
-            if (request.find("Content-Type: image/jpeg") != std::string::npos ||
-                request.find("content-type: image/jpeg") != std::string::npos) {
+            if (is_image) {
                 latest_camera_jpeg_binary_ = body;
+                pending = body;
             } else {
                 // Check if JSON containing "image"
                 size_t img_key = body.find("\"image\":");
@@ -421,13 +454,71 @@ private:
             }
         }
 
+        bool cam_accepted = false;
+        if (!pending.empty()) {
+            cam_accepted = processCameraBody(pending);
+        }
+
         std::ostringstream ss;
         ss << "{\n";
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"frame_id\": " << camera_frame_count_.load() << ",\n";
-        ss << "  \"client_ip\": \"" << client_ip << "\"\n";
+        ss << "  \"client_ip\": \"" << client_ip << "\",\n";
+        ss << "  \"processed\": " << (cam_accepted ? "true" : "false") << "\n";
         ss << "}";
         sendResponse(sock, 200, "application/json", ss.str());
+    }
+
+    // Decode one uploaded frame and run it through the DEDICATED camera
+    // pipeline (never the LiDAR one). Single-flight + throttled: at most one
+    // frame in inference, at most one every kMinCamIntervalSec; newer frames
+    // supersede skipped ones. Returns true when a frame was processed.
+    // Locking: takes cam_mtx_ only (for the whole pipeline run, so readers
+    // never observe a half-updated grid); callers must NOT hold mtx_ here.
+    bool processCameraBody(const std::string& body) {
+        if (cam_processing_.exchange(true)) return false; // another frame in flight
+        auto now = std::chrono::steady_clock::now();
+        {
+            std::lock_guard<std::mutex> lock(cam_mtx_);
+            if (cam_processed_) {
+                double since = std::chrono::duration<double>(now - last_cam_process_).count();
+                if (since < kMinCamIntervalSec) {
+                    cam_processing_ = false;
+                    return false;
+                }
+            }
+        }
+
+        ps26053::RgbImage img;
+        if (!ps26053::CameraIngest::decodeImage(
+                reinterpret_cast<const uint8_t*>(body.data()), body.size(), img)) {
+            cam_processing_ = false;
+            return false;
+        }
+        ps26053::PointCloud cloud = ps26053::CameraIngest::imageToPointCloud(img, 4096);
+
+        ps26053::FrameMetrics m;
+        {
+            std::lock_guard<std::mutex> lock(cam_mtx_);
+            double ts = 0.0;
+            if (!cam_clock_started_) {
+                cam_clock_start_ = now;
+                cam_clock_started_ = true;
+            } else {
+                ts = std::chrono::duration<double>(now - cam_clock_start_).count();
+            }
+            m = camera_pipeline_->processFrame(
+                cloud, ts, camera_frame_count_.load());
+            cam_metrics_ = m;
+            cam_processed_ = true;
+            last_cam_process_ = std::chrono::steady_clock::now();
+            cam_processing_ = false;
+        }
+        std::cout << "[Camera] Frame: " << cloud.size() << " pts -> "
+                  << m.active_cells << " cells, " << m.active_tracks
+                  << " tracks (" << m.inference_network_points << " net / "
+                  << m.inference_fallback_points << " fallback).\n";
+        return true;
     }
 
     void serveApiCameraLatestJpg(SOCKET sock) {
@@ -437,6 +528,64 @@ private:
             return;
         }
         sendResponse(sock, 404, "text/plain", "No binary frame available");
+    }
+
+    // Camera-pipeline product: REAL network labels, tracks and grid cells
+    // derived from uploaded video frames — served separately from the metric
+    // LiDAR map, with geometry explicitly estimated (see CameraIngest).
+    void serveApiCameraScan(SOCKET sock) {
+        std::lock_guard<std::mutex> lock(cam_mtx_);
+        if (!cam_processed_) {
+            sendResponse(sock, 200, "application/json", "{\"status\":\"no_frames_processed\"}");
+            return;
+        }
+        const ps26053::PointCloud& cloud = camera_pipeline_->getProcessedCloud();
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(2);
+        ss << "{\n";
+        ss << "  \"status\": \"ok\",\n";
+        ss << "  \"source\": \"video-estimated-depth\",\n";
+        ss << "  \"metrics\": {\n";
+        ss << "    \"input_points\": " << cloud.size() << ",\n";
+        ss << "    \"active_cells\": " << cam_metrics_.active_cells << ",\n";
+        ss << "    \"active_tracks\": " << cam_metrics_.active_tracks << ",\n";
+        ss << "    \"inference_network_points\": " << cam_metrics_.inference_network_points << ",\n";
+        ss << "    \"inference_fallback_points\": " << cam_metrics_.inference_fallback_points << ",\n";
+        ss << "    \"total_latency_ms\": " << cam_metrics_.total_time_ms << "\n";
+        ss << "  },\n";
+
+        ss << "  \"cells\": [\n";
+        auto cells = camera_pipeline_->getGrid().getAllCells();
+        bool first_cell = true;
+        size_t cell_stride = std::max<size_t>(1, cells.size() / 1500);
+        for (size_t i = 0; i < cells.size(); i += cell_stride) {
+            const auto& c = cells[i];
+            if (c.point_count == 0 && c.occupancy < 0.2f) continue;
+            if (!first_cell) ss << ",\n";
+            first_cell = false;
+            float cx = (c.bounds.min_x + c.bounds.max_x) * 0.5f;
+            float cy = (c.bounds.min_y + c.bounds.max_y) * 0.5f;
+            ss << "    {\"x\":" << cx << ",\"y\":" << cy << ",\"res\":" << c.resolution
+               << ",\"elev\":" << c.elevation << ",\"occ\":" << c.occupancy
+               << ",\"class\":" << static_cast<int>(c.semantic_class) << "}";
+        }
+        ss << "\n  ],\n";
+
+        ss << "  \"tracks\": [\n";
+        const auto& tracks = camera_pipeline_->getTracks();
+        bool first_trk = true;
+        for (const auto& tr : tracks) {
+            if (!first_trk) ss << ",\n";
+            first_trk = false;
+            ss << "    {\"id\":" << tr.id << ",\"x\":" << tr.position.x()
+               << ",\"y\":" << tr.position.y() << ",\"z\":" << tr.position_z
+               << ",\"vx\":" << tr.velocity.x() << ",\"vy\":" << tr.velocity.y()
+               << ",\"confidence\":" << tr.confidence
+               << ",\"length\":" << tr.bbox.width() << ",\"width\":" << tr.bbox.height() << "}";
+        }
+        ss << "\n  ]\n";
+        ss << "}";
+        sendResponse(sock, 200, "application/json", ss.str());
     }
 
     void serveApiCameraLatest(SOCKET sock) {
@@ -692,10 +841,24 @@ private:
     }
 
     void serveApiReset(SOCKET sock) {
-        std::lock_guard<std::mutex> lock(mtx_);
+        // Wait out any in-flight camera frame WITHOUT holding mtx_ (it may
+        // be inside processFrame on the pipeline we are about to replace).
+        while (cam_processing_.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        std::unique_lock<std::mutex> lock(mtx_);
         pipeline_ = std::make_unique<ps26053::MappingPipeline>("models/onnx/pointnet2_semseg.onnx");
         pipeline_->initialize();
         pipeline_->loadConfig("config");
+        {
+            // Same lock order as everywhere (mtx_ -> cam_mtx_): no inversion.
+            std::lock_guard<std::mutex> clock(cam_mtx_);
+            camera_pipeline_ = std::make_unique<ps26053::MappingPipeline>("models/onnx/pointnet2_semseg.onnx");
+            camera_pipeline_->initialize();
+            camera_pipeline_->loadConfig("config");
+            cam_processed_ = false;
+            cam_clock_started_ = false;
+        }
         scan_processed_ = false;
         seq_index_ = 0;
         camera_active_ = false;
