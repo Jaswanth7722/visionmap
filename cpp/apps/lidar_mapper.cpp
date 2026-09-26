@@ -11,7 +11,7 @@ int main(int argc, char** argv) {
     std::cout << "  DRDO Smart Vehicles | Native C++17/20 Runtime Pipeline      \n";
     std::cout << "==============================================================\n";
 
-    std::string scan_arg = "data/raw/000000.bin";
+    std::string scan_arg = "data/raw";
     std::string model_path = "models/onnx/pointnet2_semseg.onnx";
     std::string output_ply = "results/maps/adaptive_map_frame000000.ply";
     size_t max_frames = 0; // 0 = all frames found
@@ -47,7 +47,10 @@ int main(int argc, char** argv) {
         ps26053::PointCloud raw_scan;
         std::cout << "[Ingest] Loading raw LiDAR scan: " << scans[f] << " ...\n";
         if (!ps26053::LidarIO::loadBinScan(scans[f], raw_scan)) {
-            std::cerr << "[Error] Failed to load LiDAR scan!\n";
+            // No sample data ships with the repo: this path needs a real
+            // .bin scan or sequence directory as the first argument.
+            std::cerr << "[Error] Failed to load LiDAR scan!\n"
+                      << "Usage: lidar_mapper <scan.bin|sequence_dir> [model.onnx] [output.ply] [max_frames]\n";
             return 1;
         }
         std::cout << "[Ingest] Loaded " << raw_scan.size() << " points.\n";

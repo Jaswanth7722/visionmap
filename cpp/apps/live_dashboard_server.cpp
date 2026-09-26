@@ -58,7 +58,7 @@ std::string readFileContents(const std::string& path) {
 
 class LiveDashboardServer {
 public:
-    LiveDashboardServer(int port = 8080, const std::string& scan_arg = "data/raw/000000.bin")
+    LiveDashboardServer(int port = 8080, const std::string& scan_arg = "data/raw")
         : port_(port), scan_arg_(scan_arg) {
         pipeline_ = std::make_unique<ps26053::MappingPipeline>("models/onnx/pointnet2_semseg.onnx");
     }
@@ -92,6 +92,12 @@ public:
             std::cout << "[Pipeline] Pre-computation complete: "
                       << latest_metrics_.active_cells << " 2.5D cells, "
                       << latest_metrics_.active_tracks << " tracked objects.\n";
+        } else {
+            // Nothing loadable (e.g. empty data/raw/): report zero frames
+            // rather than a phantom entry. Provide a scan and restart, or
+            // POST /api/frame/next after adding files (still 0 until then).
+            seq_scans_.clear();
+            std::cout << "[Dataset] No loadable scans: server starts empty.\n";
         }
 
         // 3. Create listening socket
@@ -672,7 +678,7 @@ int main(int argc, char** argv) {
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 
     int port = 8080;
-    std::string scan_arg = "data/raw/000000.bin";
+    std::string scan_arg = "data/raw";
     if (argc > 1) {
         port = std::stoi(argv[1]);
     }

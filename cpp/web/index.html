@@ -2146,6 +2146,19 @@
                 gridCtx.font = '9px JetBrains Mono';
                 gridCtx.fillText(`${c.label}  ${c.count.toLocaleString()}`, hudX + 12, y);
             });
+
+            // Honest empty state: no bundled sample data ships with the repo,
+            // so an empty grid says so instead of rendering a static picture.
+            if (gridCells.length === 0 && lidarPoints.length === 0 && videoPoints.length === 0) {
+                gridCtx.fillStyle = 'rgba(148,163,184,0.9)';
+                gridCtx.font = 'bold 13px JetBrains Mono';
+                gridCtx.textAlign = 'center';
+                gridCtx.fillText('NO SCAN LOADED', cx, cy - 8);
+                gridCtx.font = '10px JetBrains Mono';
+                gridCtx.fillStyle = 'rgba(148,163,184,0.6)';
+                gridCtx.fillText('provide a .bin scan or sequence directory', cx, cy + 12);
+                gridCtx.textAlign = 'left';
+            }
         }
 
         // Initialize on load

@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     std::cout << "  Empirical Proof-of-Value Verification Execution             \n";
     std::cout << "==============================================================\n";
 
-    std::string scan_arg = "data/raw/000000.bin";
+    std::string scan_arg = "data/raw";
     std::string model_path = "models/onnx/pointnet2_semseg.onnx";
     size_t max_frames = 0; // 0 = all frames found
 
@@ -59,7 +59,8 @@ int main(int argc, char** argv) {
     for (size_t f = 0; f < scans.size(); ++f) {
         ps26053::PointCloud raw_scan;
         if (!ps26053::LidarIO::loadBinScan(scans[f], raw_scan)) {
-            std::cerr << "[Benchmark Error] Failed to load scan: " << scans[f] << std::endl;
+            std::cerr << "[Benchmark Error] Failed to load scan: " << scans[f] << "\n"
+                      << "Usage: benchmark <scan.bin|sequence_dir> [model.onnx] [max_frames]\n";
             return 1;
         }
         metrics = adaptive_pipeline.processFrame(raw_scan, f * kFrameIntervalSec, static_cast<int>(f));

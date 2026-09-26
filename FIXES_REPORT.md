@@ -196,3 +196,14 @@ from engine errors, implementing the missing `projectElementToThree`, and
 replacing the static `POINTS: 8,175` placeholder with a live value. Verified
 with a headless DOM harness in both worlds (engine present/absent × camera
 allowed/denied): zero uncaught errors, honest alerts only.
+
+## Addendum (2026-09-26): bundled sample dataset removed
+
+`data/raw/000000.bin` was deleted at the operator's request: no sample data
+ships with the repo anymore. All entry points take an explicit scan file or
+sequence directory (`lidar_mapper`, `benchmark`, server argv, launcher arg)
+and fail loudly with usage hints when input is missing; the server starts
+empty (`frame_count: 0`) and the BEV renders an explicit NO SCAN LOADED state
+instead of a static picture. Historical measurements in this report that cite
+`000000.bin` remain valid as dated evidence. Provide your own `.bin` scans
+under `data/raw/` (or any sequence directory) to run.
