@@ -1,0 +1,14 @@
+{
+  "id": "jaswanth7722/ps26053-pointnet-semantickitti-training",
+  "title": "PS26053 PointNet++ SemanticKITTI Training",
+  "code_file": "kaggle_pointnet2_training.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "dataset_sources": [
+    "hbenallal/semantickitti"
+  ]
+}

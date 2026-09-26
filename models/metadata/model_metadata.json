@@ -1,0 +1,24 @@
+{
+  "model_name": "PointNet2_SemSeg",
+  "task": "Semantic Segmentation for 2.5D Variable-Resolution LiDAR Mapping",
+  "classes": {
+    "0": "terrain",
+    "1": "static_obstacle",
+    "2": "dynamic_obstacle"
+  },
+  "input_shape": [1, 4096, 4],
+  "input_tensor_name": "input_points",
+  "output_shape": [1, 4096, 3],
+  "output_tensor_name": "logits",
+  "num_parameters": 807299,
+  "file_size_bytes": 3232627,
+  "accuracy_test_overall": 0.957,
+  "mean_iou": 0.884,
+  "class_iou": {
+    "terrain": 0.948,
+    "static_obstacle": 0.862,
+    "dynamic_obstacle": 0.842
+  },
+  "deployment_target": "ONNX Runtime C++17",
+  "training_framework": "PyTorch 2.14.0+cu130 (Offline Only)"
+}

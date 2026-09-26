@@ -1,0 +1,24 @@
+# PS26053 System & Pipeline Configuration
+system:
+  project_name: "PS26053_Adaptive_2.5D_Lidar_Mapping"
+  version: "1.0.0"
+  target_fps: 20.0
+  log_level: "INFO" # DEBUG, INFO, WARN, ERROR
+  num_threads: 4
+
+paths:
+  data_dir: "data"
+  raw_scans: "data/raw"
+  sequences_dir: "data/sequences"
+  model_onnx: "models/onnx/pointnet2_semseg.onnx"
+  output_maps: "results/maps"
+  benchmark_results: "results/benchmarks"
+
+visualization:
+  live_viewer: true
+  open3d_window_width: 1280
+  open3d_window_height: 720
+  color_scheme:
+    terrain: [0.35, 0.35, 0.35]
+    static_obstacle: [0.95, 0.25, 0.25]
+    dynamic_obstacle: [0.15, 0.85, 0.25]

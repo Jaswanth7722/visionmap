@@ -1,0 +1,22 @@
+# PS26053 Kalman Tracking & Association Configuration
+tracking:
+  enabled: true
+  state_dim: 4      # [x, y, vx, vy]
+  measurement_dim: 2 # [x, y]
+  
+association:
+  max_euclidean_distance: 2.5 # meters
+  gating_threshold_chi2: 9.21 # 99% gating for 2-DOF
+  max_missed_frames: 5
+  min_hits_to_confirm: 3
+
+kalman_filter:
+  process_noise_pos: 0.1   # variance
+  process_noise_vel: 0.5
+  measurement_noise_pos: 0.2
+  time_step_dt: 0.1        # 10 Hz nominal
+
+cluster_extraction:
+  min_cluster_size: 15
+  max_cluster_size: 5000
+  cluster_tolerance: 0.65  # meters

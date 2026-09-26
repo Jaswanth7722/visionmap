@@ -1,0 +1,69 @@
+{
+  "model_file": "pointnet2_semseg.onnx",
+  "architecture": "PointNet++ (SSG Semantic Segmentation)",
+  "opset_version": 17,
+  "training_provenance": {
+    "dataset": "SemanticKITTI",
+    "sequences_used": [
+      "00",
+      "01",
+      "02",
+      "03",
+      "04",
+      "05",
+      "06",
+      "07",
+      "09",
+      "10"
+    ],
+    "hardware": "2x NVIDIA Tesla T4 (Kaggle)",
+    "precision": "Mixed Precision (AMP fp16)",
+    "best_miou": 69.88,
+    "per_class_metrics": {
+      "overall_accuracy": 87.79,
+      "mean_iou": 69.88,
+      "per_class_iou": {
+        "terrain": 84.32,
+        "static_obstacle": 78.48,
+        "dynamic_object": 46.85
+      },
+      "per_class_precision": {
+        "terrain": 91.38,
+        "static_obstacle": 88.19,
+        "dynamic_object": 63.18
+      },
+      "per_class_recall": {
+        "terrain": 91.61,
+        "static_obstacle": 87.7,
+        "dynamic_object": 64.44
+      }
+    }
+  },
+  "input_tensor": {
+    "name": "points",
+    "shape": [
+      "batch",
+      "num_points",
+      3
+    ],
+    "channel_order": [
+      "x",
+      "y",
+      "z"
+    ],
+    "memory_layout": "flat row-major N*3 floats"
+  },
+  "output_tensor": {
+    "name": "logits",
+    "shape": [
+      "batch",
+      "num_points",
+      3
+    ]
+  },
+  "classes": {
+    "terrain": 0,
+    "static_obstacle": 1,
+    "dynamic_object": 2
+  }
+}

@@ -1,0 +1,26 @@
+# PS26053 LiDAR Ingestion & Preprocessing Parameters
+sensor:
+  type: "Velodyne_HDL64E"
+  frame_id: "lidar_link"
+  points_per_frame_approx: 120000
+  rate_hz: 10.0
+
+roi_crop:
+  enabled: true
+  x_min: -50.0  # meters
+  x_max: 50.0
+  y_min: -50.0
+  y_max: 50.0
+  z_min: -4.0
+  z_max: 6.0
+
+noise_filter:
+  enabled: true
+  min_intensity: 0.0
+  isolated_point_removal: true
+  k_neighbors: 8
+  std_ratio: 1.5
+
+voxel_downsample:
+  enabled: true
+  leaf_size: 0.10  # 10 cm input voxel filter before inference

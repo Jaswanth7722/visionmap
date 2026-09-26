@@ -1,0 +1,30 @@
+# Build and generated outputs
+build/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.streamlit/
+
+# Large or machine-generated binaries stay out of the pre-fix baseline.
+*.zip
+*.bin
+*.onnx
+*.pth
+*.ply
+*.pdb
+*.lib
+*.dll
+*.exe
+*.obj
+*.a
+*.jpg
+*.jpeg
+*.png
+
+# Editor and OS artifacts
+.DS_Store
+Thumbs.db
+.vs/
+.idea/

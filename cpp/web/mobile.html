@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PS 26053 Mobile Camera Sensor Transmitter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #06090e;
+            --bg-card: rgba(13, 20, 32, 0.9);
+            --border-dim: rgba(56, 189, 248, 0.2);
+            --border-glow: rgba(0, 243, 255, 0.5);
+            --cyan: #00f3ff;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --crimson: #ef4444;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(circle at 50% 10%, rgba(0, 243, 255, 0.08) 0%, transparent 50%),
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 100% 100%, 20px 20px, 20px 20px;
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        header {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: 12px;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand-badge {
+            font-family: 'Orbitron', monospace;
+            background: linear-gradient(135deg, rgba(0,243,255,0.2), rgba(16,185,129,0.2));
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .title-text {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .sub-text {
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+
+        .conn-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--emerald);
+        }
+
+        .conn-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--emerald);
+            box-shadow: 0 0 8px var(--emerald);
+            animation: pulse 1.6s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+
+        /* Viewfinder Container */
+        .viewfinder-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            aspect-ratio: 4/3;
+            max-height: 48vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #010204;
+        }
+
+        #cameraVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+
+        #snapPreviewImg {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+
+        .viewfinder-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .reticle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 110px;
+            height: 110px;
+            border: 2px dashed rgba(0, 243, 255, 0.4);
+            border-radius: 8px;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .reticle::before {
+            content: '';
+            width: 14px;
+            height: 14px;
+            border-top: 2px solid var(--cyan);
+            border-left: 2px solid var(--cyan);
+            position: absolute;
+            top: -2px;
+            left: -2px;
+        }
+
+        .reticle::after {
+            content: '';
+            width: 14px;
+            height: 14px;
+            border-bottom: 2px solid var(--cyan);
+            border-right: 2px solid var(--cyan);
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+        }
+
+        .hud-tag-top {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            right: 8px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .badge-metric {
+            background: rgba(8, 12, 22, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-dim);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--cyan);
+        }
+
+        /* Controls Panel */
+        .controls-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .btn {
+            background: rgba(18, 27, 43, 0.9);
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            border-color: #38bdf8;
+            color: #ffffff;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+        }
+
+        .btn.transmitting {
+            background: linear-gradient(135deg, #b91c1c, #991b1b);
+            border-color: #ef4444;
+            color: #ffffff;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+            animation: transmitGlow 1s infinite alternate;
+        }
+
+        @keyframes transmitGlow {
+            0% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+            100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+        }
+
+        .btn.secondary {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        select, input[type="text"] {
+            background: #090d16;
+            color: #f8fafc;
+            border: 1px solid var(--border-dim);
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 11px;
+            font-family: 'Inter', sans-serif;
+            width: 100%;
+        }
+
+        .telemetry-row {
+            display: flex;
+            justify-content: space-around;
+            background: rgba(10, 15, 26, 0.7);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            padding: 8px 4px;
+        }
+
+        .telem-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .telem-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        .telem-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--cyan);
+        }
+
+        .telem-val.green { color: var(--emerald); }
+        .telem-val.amber { color: var(--amber); }
+
+        .info-card {
+            background: rgba(0, 243, 255, 0.04);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 10px;
+            line-height: 1.4;
+            color: var(--text-secondary);
+        }
+
+        a.link-btn {
+            color: var(--cyan);
+            text-decoration: none;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="brand-badge">PS 26053</div>
+            <div>
+                <div class="title-text">MOBILE TRANSMITTER</div>
+                <div class="sub-text">Universal Camera Sensor Core</div>
+            </div>
+        </div>
+        <div class="conn-pill" id="connPill">
+            <span class="conn-dot"></span>
+            <span id="connStatusText">ONLINE</span>
+        </div>
+    </header>
+
+    <!-- Camera Viewfinder -->
+    <div class="viewfinder-card">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+        <img id="snapPreviewImg" alt="Snap preview">
+        
+        <div class="hud-tag-top">
+            <span class="badge-metric" id="hudRes">READY</span>
+            <span class="badge-metric" id="hudLensMode">REAR (ENV)</span>
+            <span class="badge-metric" id="hudFps">0 FPS</span>
+        </div>
+
+        <div class="reticle" id="reticle"></div>
+
+        <div class="viewfinder-placeholder" id="placeholder">
+            <div style="font-size:32px; opacity:0.5;">📹</div>
+            <div style="font-size:12px; font-weight:600; color:#cbd5e1;">Mobile Camera Inactive</div>
+            <div style="font-size:10px; color:var(--text-secondary); max-width:220px;">
+                Tap "Start Live Stream" or use "Snap Photo" to transmit your phone's real camera feed to the 3D perception core.
+            </div>
+        </div>
+    </div>
+
+    <!-- Telemetry Stats -->
+    <div class="telemetry-row">
+        <div class="telem-item">
+            <span class="telem-label">FRAMES SENT</span>
+            <span class="telem-val green" id="statFrames">0</span>
+        </div>
+        <div class="telem-item">
+            <span class="telem-label">TARGET FPS</span>
+            <span class="telem-val" id="statFps">8</span>
+        </div>
+        <div class="telem-item">
+            <span class="telem-label">LATENCY</span>
+            <span class="telem-val amber" id="statLatency">-- ms</span>
+        </div>
+        <div class="telem-item">
+            <span class="telem-label">UPLOAD</span>
+            <span class="telem-val" id="statKb">0 KB/s</span>
+        </div>
+    </div>
+
+    <!-- Controls Panel -->
+    <div class="controls-card">
+        <!-- Lens & Quality Selection -->
+        <div class="grid-2">
+            <div>
+                <label style="font-size:10px; color:var(--text-secondary); font-weight:600; text-transform:uppercase;">Lens</label>
+                <select id="lensSelect" style="margin-top:3px;">
+                    <option value="environment" selected>📷 Rear Environment Lens</option>
+                    <option value="user">🤳 Front Selfie Lens</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:10px; color:var(--text-secondary); font-weight:600; text-transform:uppercase;">Rate</label>
+                <select id="fpsSelect" style="margin-top:3px;">
+                    <option value="4">4 FPS (Eco)</option>
+                    <option value="8" selected>8 FPS (Balanced)</option>
+                    <option value="12">12 FPS (Fluid)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Primary Action Buttons -->
+        <button class="btn primary" id="btnToggleTransmit">
+            <span>🔴 Start Live Stream to Core</span>
+        </button>
+
+        <div class="grid-2">
+            <button class="btn secondary" id="btnFlipLens">
+                <span>🔄 Flip Lens</span>
+            </button>
+            <button class="btn secondary" id="btnSnapPhoto">
+                <span>📸 Snap & Transmit</span>
+            </button>
+        </div>
+
+        <!-- Native Hardware Camera Capture fallback -->
+        <input type="file" id="nativeCameraInput" accept="image/*" capture="environment" style="display:none;">
+        <button class="btn secondary" id="btnNativeCamera" style="border-color:rgba(0, 243, 255, 0.35);">
+            <span>📱 Hardware Camera Photo Capture</span>
+        </button>
+
+        <!-- Information / Navigation Card -->
+        <div class="info-card">
+            <div style="font-weight:700; color:var(--cyan); margin-bottom:2px;">DRDO Smart Perception Core Connected</div>
+            <div>Server Target: <code id="serverAddressText" style="color:#ffffff;">http://10.139.23.36:8080/</code></div>
+            <div style="margin-top:6px;">
+                <a href="/index.html" class="link-btn">🌐 Switch to Full 3D WebGL Dashboard on Phone &rarr;</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas for frame processing -->
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('cameraVideo');
+        const snapPreviewImg = document.getElementById('snapPreviewImg');
+        const placeholder = document.getElementById('placeholder');
+        const reticle = document.getElementById('reticle');
+        const hiddenCanvas = document.getElementById('hiddenCanvas');
+        const ctx = hiddenCanvas.getContext('2d');
+
+        const btnToggleTransmit = document.getElementById('btnToggleTransmit');
+        const btnFlipLens = document.getElementById('btnFlipLens');
+        const btnSnapPhoto = document.getElementById('btnSnapPhoto');
+        const btnNativeCamera = document.getElementById('btnNativeCamera');
+        const nativeCameraInput = document.getElementById('nativeCameraInput');
+        const lensSelect = document.getElementById('lensSelect');
+        const fpsSelect = document.getElementById('fpsSelect');
+
+        const hudRes = document.getElementById('hudRes');
+        const hudLensMode = document.getElementById('hudLensMode');
+        const hudFps = document.getElementById('hudFps');
+        const statFrames = document.getElementById('statFrames');
+        const statFps = document.getElementById('statFps');
+        const statLatency = document.getElementById('statLatency');
+        const statKb = document.getElementById('statKb');
+        const connStatusText = document.getElementById('connStatusText');
+
+        let isStreaming = false;
+        let mediaStream = null;
+        let transmitTimer = null;
+        let framesSent = 0;
+        let lastTimestamp = performance.now();
+        let currentFacingMode = 'environment';
+        let bytesSentInSecond = 0;
+        let byteTimer = null;
+
+        // Auto-detect current host address
+        const serverHost = window.location.origin;
+        document.getElementById('serverAddressText').innerText = serverHost + '/';
+
+        // Flip lens
+        btnFlipLens.addEventListener('click', () => {
+            currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+            lensSelect.value = currentFacingMode;
+            hudLensMode.innerText = currentFacingMode === 'environment' ? 'REAR (ENV)' : 'FRONT (USER)';
+            if (isStreaming) {
+                restartStream();
+            }
+        });
+
+        lensSelect.addEventListener('change', () => {
+            currentFacingMode = lensSelect.value;
+            hudLensMode.innerText = currentFacingMode === 'environment' ? 'REAR (ENV)' : 'FRONT (USER)';
+            if (isStreaming) restartStream();
+        });
+
+        fpsSelect.addEventListener('change', () => {
+            statFps.innerText = fpsSelect.value;
+            if (isStreaming) {
+                clearInterval(transmitTimer);
+                startTransmitLoop();
+            }
+        });
+
+        btnToggleTransmit.addEventListener('click', async () => {
+            if (!isStreaming) {
+                await startStreaming();
+            } else {
+                stopStreaming();
+            }
+        });
+
+        async function startStreaming() {
+            try {
+                const constraints = {
+                    video: {
+                        facingMode: { ideal: currentFacingMode },
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: false
+                };
+
+                btnToggleTransmit.innerText = "⏳ Opening Camera...";
+                
+                try {
+                    mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+                } catch (e1) {
+                    // Fallback to basic video constraint
+                    mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                }
+
+                video.srcObject = mediaStream;
+                video.style.display = 'block';
+                snapPreviewImg.style.display = 'none';
+                placeholder.style.display = 'none';
+                reticle.style.display = 'flex';
+
+                await video.play();
+
+                hudRes.innerText = `${video.videoWidth || 640}x${video.videoHeight || 480}`;
+                hudLensMode.innerText = currentFacingMode === 'environment' ? 'REAR (ENV)' : 'FRONT (USER)';
+
+                isStreaming = true;
+                btnToggleTransmit.className = 'btn transmitting';
+                btnToggleTransmit.innerHTML = '<span>⏹ Stop Transmitting</span>';
+
+                startTransmitLoop();
+                startByteTracker();
+            } catch (err) {
+                console.error("Camera access failed:", err);
+                btnToggleTransmit.className = 'btn primary';
+                btnToggleTransmit.innerHTML = '<span>🔴 Start Live Stream to Core</span>';
+                
+                // Show clean guidance for mobile HTTP
+                alert("Camera Access Note:\n\nIf your mobile browser blocks camera over HTTP:\n1. Use 'Hardware Camera Photo Capture' below for 100% instant photo transmission.\n2. Or in Chrome on Android, open chrome://flags/#unsafely-treat-insecure-origin-as-secure, add " + serverHost + ", and tap Enable.");
+            }
+        }
+
+        function restartStream() {
+            stopStreaming();
+            setTimeout(startStreaming, 300);
+        }
+
+        function stopStreaming() {
+            if (transmitTimer) {
+                clearInterval(transmitTimer);
+                transmitTimer = null;
+            }
+            if (byteTimer) {
+                clearInterval(byteTimer);
+                byteTimer = null;
+            }
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+            video.srcObject = null;
+            video.style.display = 'none';
+            placeholder.style.display = 'flex';
+            reticle.style.display = 'none';
+
+            isStreaming = false;
+            btnToggleTransmit.className = 'btn primary';
+            btnToggleTransmit.innerHTML = '<span>🔴 Start Live Stream to Core</span>';
+            hudFps.innerText = '0 FPS';
+        }
+
+        function startTransmitLoop() {
+            const targetFps = parseInt(fpsSelect.value, 10) || 8;
+            const intervalMs = Math.round(1000 / targetFps);
+
+            transmitTimer = setInterval(async () => {
+                if (!isStreaming || !video.videoWidth) return;
+                await captureAndSendFrame();
+            }, intervalMs);
+        }
+
+        async function captureAndSendFrame() {
+            const w = 480;
+            const h = Math.round(w * (video.videoHeight / video.videoWidth)) || 360;
+            hiddenCanvas.width = w;
+            hiddenCanvas.height = h;
+
+            ctx.drawImage(video, 0, 0, w, h);
+            const dataUrl = hiddenCanvas.toDataURL('image/jpeg', 0.65);
+
+            const t0 = performance.now();
+            try {
+                const res = await fetch('/api/camera/upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: dataUrl })
+                });
+
+                if (res.ok) {
+                    framesSent++;
+                    statFrames.innerText = framesSent;
+                    const latency = Math.round(performance.now() - t0);
+                    statLatency.innerText = `${latency} ms`;
+                    bytesSentInSecond += dataUrl.length;
+                    
+                    const now = performance.now();
+                    const fps = Math.round(1000 / (now - lastTimestamp));
+                    lastTimestamp = now;
+                    hudFps.innerText = `${fps} FPS`;
+                }
+            } catch (netErr) {
+                connStatusText.innerText = "RECONNECTING";
+                document.getElementById('connPill').style.borderColor = 'var(--crimson)';
+            }
+        }
+
+        function startByteTracker() {
+            byteTimer = setInterval(() => {
+                const kb = Math.round(bytesSentInSecond / 1024);
+                statKb.innerText = `${kb} KB/s`;
+                bytesSentInSecond = 0;
+            }, 1000);
+        }
+
+        // Single Snap
+        btnSnapPhoto.addEventListener('click', async () => {
+            if (isStreaming && video.videoWidth) {
+                await captureAndSendFrame();
+                alert("Captured and transmitted live frame to 3D Perception Core!");
+            } else {
+                nativeCameraInput.click();
+            }
+        });
+
+        // Native Hardware Photo Input (Works 100% on iOS & Android even over HTTP)
+        btnNativeCamera.addEventListener('click', () => {
+            nativeCameraInput.click();
+        });
+
+        nativeCameraInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const dataUrl = event.target.result;
+                snapPreviewImg.src = dataUrl;
+                snapPreviewImg.style.display = 'block';
+                video.style.display = 'none';
+                placeholder.style.display = 'none';
+                reticle.style.display = 'flex';
+                hudRes.innerText = "PHOTO SNAP";
+
+                try {
+                    const res = await fetch('/api/camera/upload', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: dataUrl })
+                    });
+                    if (res.ok) {
+                        framesSent++;
+                        statFrames.innerText = framesSent;
+                        alert("Photo transmitted directly into the 3D Perception Core! Check the 3D dashboard viewport.");
+                    }
+                } catch (err) {
+                    alert("Upload failed. Make sure the phone is on the same Wi-Fi network.");
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Check server connection
+        async function checkConnection() {
+            try {
+                const res = await fetch('/api/status');
+                if (res.ok) {
+                    connStatusText.innerText = "ONLINE";
+                    document.getElementById('connPill').style.borderColor = 'rgba(16, 185, 129, 0.35)';
+                }
+            } catch (e) {
+                connStatusText.innerText = "OFFLINE";
+                document.getElementById('connPill').style.borderColor = 'var(--crimson)';
+            }
+        }
+        setInterval(checkConnection, 5000);
+        checkConnection();
+    </script>
+</body>
+</html>

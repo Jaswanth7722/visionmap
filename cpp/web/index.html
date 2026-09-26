@@ -1,0 +1,1965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PS 26053: Adaptive Variable-Resolution 2.5D LiDAR Mapping | C++ Engine</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Three.js & OrbitControls for Hardware-Accelerated 3D WebGL -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        :root {
+            --bg-base: #06090e;
+            --bg-surface: rgba(13, 20, 32, 0.85);
+            --bg-card: rgba(18, 27, 43, 0.7);
+            --border-dim: rgba(56, 189, 248, 0.15);
+            --border-glow: rgba(0, 243, 255, 0.4);
+            --cyan: #00f3ff;
+            --cyan-glow: rgba(0, 243, 255, 0.25);
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --crimson: #ef4444;
+            --magenta: #e879f9;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(0, 243, 255, 0.04) 0%, transparent 40%),
+                radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.03) 0%, transparent 40%),
+                linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+            background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top HUD Header */
+        header {
+            background: var(--bg-surface);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border-dim);
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+
+        .brand-container {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .badge-ps {
+            font-family: 'Orbitron', monospace;
+            background: linear-gradient(135deg, rgba(0,243,255,0.2), rgba(16,185,129,0.2));
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 800;
+            box-shadow: 0 0 12px var(--cyan-glow);
+        }
+
+        .brand-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #ffffff;
+        }
+
+        .brand-sub {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 1px;
+        }
+
+        .top-telemetry {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hud-pill {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid var(--border-dim);
+            padding: 5px 12px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            min-width: 100px;
+        }
+
+        .hud-pill.highlight {
+            border-color: rgba(16, 185, 129, 0.4);
+            background: rgba(16, 185, 129, 0.08);
+        }
+
+        .hud-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .hud-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--cyan);
+        }
+
+        .hud-value.green { color: var(--emerald); }
+        .hud-value.amber { color: var(--amber); }
+
+        /* Main Grid Workspace */
+        main {
+            display: grid;
+            grid-template-columns: 320px 1fr 320px;
+            gap: 14px;
+            padding: 12px 16px;
+            flex: 1;
+            overflow: hidden;
+            height: calc(100vh - 66px);
+        }
+
+        /* Glass Panel */
+        .glass-panel {
+            background: var(--bg-surface);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-dim);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+        }
+
+        .panel-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-dim);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.02);
+            flex-shrink: 0;
+        }
+
+        .panel-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-title .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--cyan);
+            box-shadow: 0 0 8px var(--cyan);
+        }
+
+        .panel-body {
+            padding: 12px;
+            overflow-y: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .status-badge.offline {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #fca5a5;
+        }
+
+        .status-badge.online {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: #6ee7b7;
+        }
+
+        .pulse-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        /* Camera Feed Container */
+        .camera-viewport {
+            width: 100%;
+            height: 160px;
+            background: #000000;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #webcamVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+
+        .camera-overlay-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 14px;
+            gap: 6px;
+        }
+
+        .cam-hud-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border: 1px solid rgba(0, 243, 255, 0.25);
+            display: none;
+        }
+
+        .cam-hud-overlay::before {
+            content: "REAL HARDWARE STREAM";
+            position: absolute;
+            top: 6px;
+            left: 8px;
+            font-size: 9px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--emerald);
+            background: rgba(0,0,0,0.7);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        /* Video Upload Dropzone & Controls */
+        .segmented-tabs {
+            display: flex;
+            background: rgba(8, 12, 22, 0.9);
+            border: 1px solid var(--border-dim);
+            border-radius: 6px;
+            padding: 2px;
+            margin-bottom: 8px;
+            gap: 2px;
+        }
+
+        .seg-tab-btn {
+            flex: 1;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 600;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .seg-tab-btn.active {
+            background: rgba(0, 243, 255, 0.16);
+            color: #ffffff;
+            border-color: var(--cyan);
+            box-shadow: 0 0 8px var(--cyan-glow);
+        }
+
+        .video-dropzone {
+            border: 2px dashed rgba(0, 243, 255, 0.3);
+            background: rgba(0, 243, 255, 0.02);
+            border-radius: 8px;
+            padding: 10px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            margin-bottom: 8px;
+        }
+
+        .video-dropzone:hover, .video-dropzone.dragover {
+            border-color: var(--cyan);
+            background: rgba(0, 243, 255, 0.08);
+            box-shadow: 0 0 12px var(--cyan-glow);
+        }
+
+        .video-controls-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(8, 12, 22, 0.9);
+            border: 1px solid var(--border-dim);
+            border-radius: 6px;
+            padding: 4px 8px;
+            margin-top: 6px;
+        }
+
+        .video-scrubber {
+            flex: 1;
+            accent-color: var(--cyan);
+            cursor: pointer;
+            height: 4px;
+        }
+
+        /* Buttons */
+        .btn {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.9));
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            border-color: var(--cyan);
+            background: rgba(0, 243, 255, 0.12);
+            box-shadow: 0 0 12px var(--cyan-glow);
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            border-color: #38bdf8;
+            color: #ffffff;
+        }
+
+        .btn.danger {
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #fca5a5;
+        }
+
+        /* Center Column Layout */
+        .center-column {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* Viewport Tabs */
+        .tab-bar {
+            display: flex;
+            gap: 6px;
+            background: rgba(10, 15, 26, 0.7);
+            padding: 4px;
+            border-radius: 8px;
+            border: 1px solid var(--border-dim);
+            flex-shrink: 0;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tab-btn.active {
+            background: rgba(0, 243, 255, 0.12);
+            border-color: var(--cyan);
+            color: #ffffff;
+            box-shadow: 0 0 10px var(--cyan-glow);
+        }
+
+        .viewport-wrapper {
+            position: relative;
+            flex: 1;
+            background: #010204;
+            border-radius: 10px;
+            border: 1px solid var(--border-dim);
+            overflow: hidden;
+        }
+
+        #threeContainer {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            inset: 0;
+        }
+
+        #gridContainer {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            inset: 0;
+            display: none;
+        }
+
+        /* HUD Overlays */
+        .hud-overlay-top {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .hud-tags-group {
+            display: flex;
+            gap: 6px;
+            pointer-events: auto;
+        }
+
+        .canvas-tag {
+            background: rgba(8, 12, 22, 0.88);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-dim);
+            padding: 4px 9px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--cyan);
+        }
+
+        .color-mode-select {
+            display: flex;
+            gap: 4px;
+            background: rgba(8, 12, 22, 0.88);
+            border: 1px solid var(--border-dim);
+            padding: 3px;
+            border-radius: 6px;
+            pointer-events: auto;
+        }
+
+        .color-opt-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+        }
+
+        .color-opt-btn.active {
+            background: rgba(0, 243, 255, 0.18);
+            border-color: var(--cyan);
+            color: #fff;
+        }
+
+        .hud-legend {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(8, 12, 22, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-dim);
+            border-radius: 6px;
+            padding: 6px 10px;
+            display: flex;
+            gap: 12px;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        /* Metric Rows */
+        .metric-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
+            font-size: 11px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .metric-key { color: var(--text-secondary); }
+        .metric-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #ffffff; }
+
+        /* Tracks Table */
+        .tracks-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            text-align: left;
+        }
+
+        .tracks-table th {
+            color: var(--text-muted);
+            padding: 5px 6px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-dim);
+            text-transform: uppercase;
+            font-size: 9px;
+        }
+
+        .tracks-table td {
+            padding: 5px 6px;
+            font-family: 'JetBrains Mono', monospace;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .terminal-box {
+            background: #03060a;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: #94a3b8;
+            height: 110px;
+            overflow-y: auto;
+            line-height: 1.4;
+        }
+
+        .term-log.ok { color: var(--emerald); }
+        .term-log.info { color: var(--cyan); }
+        .term-log.warn { color: var(--amber); }
+
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+
+        /* Responsive Mobile Layout */
+        @media (max-width: 960px) {
+            body {
+                height: auto;
+                min-height: 100vh;
+                overflow-y: auto;
+            }
+            header {
+                flex-direction: column;
+                gap: 8px;
+                align-items: flex-start;
+                padding: 10px 14px;
+            }
+            .top-telemetry {
+                flex-wrap: wrap;
+                width: 100%;
+                gap: 6px;
+            }
+            .hud-pill {
+                min-width: 75px;
+                padding: 4px 8px;
+                flex: 1;
+            }
+            main {
+                display: flex;
+                flex-direction: column;
+                height: auto;
+                overflow: visible;
+                padding: 10px;
+                gap: 12px;
+            }
+            .viewport-wrapper {
+                min-height: 440px;
+                height: 52vh;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="brand-container">
+            <div class="badge-ps">PS 26053</div>
+            <div>
+                <h1 class="brand-title">ADAPTIVE VARIABLE-RESOLUTION 2.5D LIDAR MAPPING</h1>
+                <div class="brand-sub">DRDO Smart Vehicles Perception Core | Native C++17/20 Runtime</div>
+            </div>
+        </div>
+
+        <div class="top-telemetry">
+            <div class="hud-pill highlight">
+                <span class="hud-label">C++ RAM</span>
+                <span class="hud-value green" id="hudRam">&mdash; MB</span>
+            </div>
+            <div class="hud-pill">
+                <span class="hud-label">POINTNET++</span>
+                <span class="hud-value" id="hudLatency">&mdash; ms</span>
+            </div>
+            <div class="hud-pill">
+                <span class="hud-label">LATENCY</span>
+                <span class="hud-value" id="hudTotalLatency">&mdash; ms</span>
+            </div>
+            <div class="hud-pill">
+                <span class="hud-label">FRAME RATE</span>
+                <span class="hud-value amber" id="hudFps">&mdash; Hz</span>
+            </div>
+            <div class="hud-pill">
+                <span class="hud-label">GAPS</span>
+                <span class="hud-value green">0.00 mm</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Grid Workspace -->
+    <main>
+        <!-- LEFT PANEL: Sensor & Video Perception Controls -->
+        <aside class="glass-panel">
+            <div class="panel-header">
+                <span class="panel-title"><span class="dot"></span> Perception Source</span>
+                <span class="status-badge offline" id="camStatusBadge">
+                    <span class="pulse-indicator"></span> Standby
+                </span>
+            </div>
+
+            <div class="panel-body">
+                <!-- Mode Switcher: Video Upload vs Live Camera -->
+                <div class="segmented-tabs">
+                    <button class="seg-tab-btn active" id="segTabVideo">
+                        <span>📁 Upload Video</span>
+                    </button>
+                    <button class="seg-tab-btn" id="segTabCam">
+                        <span>📹 Live Camera</span>
+                    </button>
+                </div>
+
+                <!-- 1. VIDEO UPLOAD SECTION (Default) -->
+                <div id="sectionVideoUpload">
+                    <div id="videoDropZone" class="video-dropzone">
+                        <span style="font-size:24px;">🎬</span>
+                        <span style="font-size:11px; font-weight:700; color:#f8fafc;">Drop Video File Here</span>
+                        <span style="font-size:9px; color:var(--text-secondary);">Click to browse MP4, WebM, MOV, AVI</span>
+                        <input type="file" id="videoFileInput" accept="video/*" style="display:none;">
+                    </div>
+                </div>
+
+                <!-- 2. LIVE CAMERA SECTION (Hidden by default) -->
+                <div id="sectionLiveCam" style="display:none; margin-bottom:8px;">
+                    <div style="display:flex; gap:6px;">
+                        <select id="cameraSourceSelect" style="flex:1; background:#090d16; color:#f8fafc; border:1px solid var(--border-dim); border-radius:6px; padding:6px 8px; font-size:10px; font-family:'Inter', sans-serif;">
+                            <option value="auto_env">📷 Rear Camera (Environment)</option>
+                            <option value="auto_user">🤳 Front Camera (Selfie / Laptop)</option>
+                        </select>
+                        <button class="btn" id="btnFlipCam" title="Flip Camera" style="padding:6px 10px;">
+                            <span>🔄</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Media Viewport (Plays uploaded video or live camera) -->
+                <div class="camera-viewport">
+                    <video id="webcamVideo" playsinline loop muted></video>
+                    <div class="cam-hud-overlay" id="camHudOverlay">
+                        <span style="font-size:9px; font-family:'JetBrains Mono'; color:var(--cyan);" id="camResLabel"></span>
+                    </div>
+                    <div class="camera-overlay-placeholder" id="camPlaceholder">
+                        <div style="font-size:28px; opacity:0.4;">🎥</div>
+                        <div style="font-size:11px; font-weight:600; color:#cbd5e1;" id="placeholderTitle">No Video Loaded</div>
+                        <div style="font-size:9px; color:var(--text-muted); max-width:200px;" id="placeholderSub">
+                            Upload your driving video or turn on live camera to project 3D points.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Video Playback & Scrub Controls (Visible when video loaded) -->
+                <div id="videoControlsGroup" style="display:none; margin-top:6px;">
+                    <div class="video-controls-bar">
+                        <button class="btn" id="btnPlayPauseVideo" style="padding:4px 8px; font-size:10px;">
+                            <span id="playPauseIcon">▶</span>
+                        </button>
+                        <input type="range" class="video-scrubber" id="videoScrubber" min="0" max="100" value="0" step="0.1">
+                        <span style="font-size:9px; font-family:'JetBrains Mono'; color:var(--cyan); white-space:nowrap;" id="videoTimeDisplay">00:00 / 00:00</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; font-size:9px; color:var(--text-muted);">
+                        <span id="videoFileName" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; color:var(--text-secondary);">driving_test.mp4</span>
+                        <button class="btn" id="btnToggleLoop" style="padding:2px 6px; font-size:8px; background:rgba(0,243,255,0.1); border-color:var(--cyan); color:var(--cyan);">🔁 Loop: ON</button>
+                    </div>
+                </div>
+
+                <!-- Live Camera Start/Stop Button (Visible when camera tab active) -->
+                <div id="cameraControlsGroup" style="display:none; margin-top:6px;">
+                    <button class="btn primary" id="btnToggleCam" style="width:100%;">
+                        <span>▶ Start Live Camera</span>
+                    </button>
+                </div>
+
+                <button class="btn" id="btnRecenter3D" style="width:100%; margin-top:8px;">
+                    <span>🎯 Recenter 3D Viewport</span>
+                </button>
+
+                <!-- C++ Pipeline Live Status -->
+                <div style="margin-top:10px; border-top:1px solid var(--border-dim); padding-top:10px;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>C++ Pipeline Status</span>
+                        <span id="pipelineStatusDot" style="width:7px;height:7px;border-radius:50%;background:#ef4444;display:inline-block;"></span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-key">Input Points</span>
+                        <span class="metric-val" id="valRawPoints">&mdash;</span>
+                    </div>
+                    <div class="metric-row" style="margin-top:4px;">
+                        <span class="metric-key">2.5D Cells</span>
+                        <span class="metric-val" id="valActiveCells">&mdash;</span>
+                    </div>
+                    <div class="metric-row" style="margin-top:4px;">
+                        <span class="metric-key">Tracked Objects</span>
+                        <span class="metric-val" id="valTrackedVehicles">&mdash;</span>
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- CENTER PANEL: Primary Interactive 3D WebGL Engine & 2.5D BEV -->
+        <section class="center-column">
+            <!-- Viewport Switcher Tabs -->
+            <div class="tab-bar">
+                <button class="tab-btn active" id="tab3D">
+                    <span>🌐 3D Spatial Hologram (WebGL)</span>
+                </button>
+                <button class="tab-btn" id="tabBEV">
+                    <span>🗺️ 2.5D Variable-Resolution BEV Grid</span>
+                </button>
+            </div>
+
+            <!-- Viewport Container -->
+            <div class="viewport-wrapper">
+                <!-- Three.js 3D WebGL Canvas Container -->
+                <div id="threeContainer"></div>
+
+                <!-- 2.5D Canvas Container -->
+                <div id="gridContainer">
+                    <canvas id="gridCanvas"></canvas>
+                </div>
+
+                <!-- HUD Overlays -->
+                <div class="hud-overlay-top">
+                    <div class="hud-tags-group">
+                        <span class="canvas-tag" id="tagPointsCount">POINTS: 8,175 (LiDAR)</span>
+                        <span class="canvas-tag" id="tagCamSensorStatus" style="color:#94a3b8;">CAM 3D: IDLE</span>
+                        <span class="canvas-tag">60 FPS WEBGL</span>
+                    </div>
+
+                    <!-- Color Mode Selector -->
+                    <div class="color-mode-select">
+                        <button class="color-opt-btn" id="btnModeRgb">True RGB</button>
+                        <button class="color-opt-btn active" id="btnModeSemantics">Semantics</button>
+                        <button class="color-opt-btn" id="btnModeElevation">Elevation</button>
+                    </div>
+                </div>
+
+                <!-- 3D HUD Legend -->
+                <div class="hud-legend" id="hudLegend">
+                    <div class="legend-item">
+                        <span class="legend-dot" style="background:#10b981;"></span>
+                        <span>Road / Ground (Terrain)</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-dot" style="background:#f59e0b;"></span>
+                        <span>Tracked Vehicles</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-dot" style="background:#00f3ff;"></span>
+                        <span>Structures / Roadside</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: Obstacle Tracking Telemetry & Console -->
+        <aside class="glass-panel">
+            <div class="panel-header">
+                <span class="panel-title"><span class="dot" style="background:var(--amber);"></span> Tracked Obstacles</span>
+                <span class="canvas-tag" id="tagActiveTracks">7 ACTIVE</span>
+            </div>
+
+            <div class="panel-body">
+                <div style="overflow-x:auto;">
+                    <table class="tracks-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Class</th>
+                                <th>Range</th>
+                                <th>Speed</th>
+                                <th>Heading</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tracksTableBody">
+                            <tr id="tracks-empty-row"><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">Awaiting C++ pipeline scan...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Execution Breakdown -->
+                <div style="margin-top:6px; border-top:1px solid var(--border-dim); padding-top:10px;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; margin-bottom:6px;">
+                        Native Execution (GCC x86_64)
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-key">Voxel ROI &amp; Prep</span>
+                        <span class="metric-val" id="metPreprocess">— ms</span>
+                    </div>
+                    <div class="metric-row" style="margin-top:3px;">
+                        <span class="metric-key">PointNet++ ONNX</span>
+                        <span class="metric-val" id="metInference" style="color:var(--cyan);">— ms</span>
+                    </div>
+                    <div class="metric-row" style="margin-top:3px;">
+                        <span class="metric-key">Kalman Tracking</span>
+                        <span class="metric-val" id="metTracking" style="color:var(--emerald);">— ms</span>
+                    </div>
+                    <div class="metric-row" style="margin-top:3px;">
+                        <span class="metric-key">Quadtree 2.5D</span>
+                        <span class="metric-val" id="metMapping">— ms</span>
+                    </div>
+                </div>
+
+                <!-- Console Log -->
+                <div style="margin-top:6px; border-top:1px solid var(--border-dim); padding-top:10px; flex:1; display:flex; flex-direction:column;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; margin-bottom:4px;">
+                        Runtime Log
+                    </div>
+                    <div class="terminal-box" id="termLogs">
+                        <div class="term-log ok">[System] Three.js WebGL Engine Initialized (60 FPS).</div>
+                        <div class="term-log info">[Core] Connecting to Native C++ PointNet++ ONNX pipeline...</div>
+                        <div class="term-log ok">[ResPolicy] Adaptive bands: 0-10m→5cm, 10-30m→15cm, 30-60m→30cm, 60-100m→50cm.</div>
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+    </main>
+
+    <!-- Client-Side Real-Time Visualization & Three.js WebGL Engine -->
+    <script>
+        // State variables
+        let webcamStream = null;
+        let isWebcamRunning = false;
+        let activeTab = '3D'; // '3D' or 'BEV'
+        let colorMode = 'semantics'; // 'rgb', 'semantics', 'elevation'
+        
+        let lidarPoints = [];
+        let cameraPoints = [];
+        let gridCells = [];     // Active 2.5D cells from C++ Quadtree Grid
+        let tracksData = [];    // Kalman tracked objects from C++ tracker
+
+        // DOM elements
+        const webcamVideo = document.getElementById('webcamVideo');
+        const camPlaceholder = document.getElementById('camPlaceholder');
+        const camStatusBadge = document.getElementById('camStatusBadge');
+        const camHudOverlay = document.getElementById('camHudOverlay');
+        const btnToggleCam = document.getElementById('btnToggleCam');
+        const btnRecenter3D = document.getElementById('btnRecenter3D');
+        // Note: btnProcessLidar removed from UI — no longer referenced
+        const termLogs = document.getElementById('termLogs');
+        const hudRam = document.getElementById('hudRam');
+        const hudLatency = document.getElementById('hudLatency');
+        const hudTotalLatency = document.getElementById('hudTotalLatency');
+        const hudFps = document.getElementById('hudFps');
+        const tagPointsCount = document.getElementById('tagPointsCount');
+        const tagCamSensorStatus = document.getElementById('tagCamSensorStatus');
+
+        function appendLog(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `term-log ${type}`;
+            const time = new Date().toLocaleTimeString();
+            div.innerText = `[${time}] ${msg}`;
+            termLogs.appendChild(div);
+            termLogs.scrollTop = termLogs.scrollHeight;
+        }
+
+        // =========================================================================
+        // THREE.JS HARDWARE-ACCELERATED WEBGL 3D ENGINE
+        // =========================================================================
+        const container = document.getElementById('threeContainer');
+        let scene, camera, renderer, controls;
+        let lidarPointCloud, cameraPointCloud;
+        let frustumWireframe, egoVehicleGroup, boundingBoxesGroup;
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020408);
+            scene.fog = new THREE.FogExp2(0x020408, 0.012);
+
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.5, 300);
+            camera.position.set(-18, 22, -26);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.maxDistance = 180;
+            controls.minDistance = 3;
+            controls.target.set(0, 0, 10);
+            controls.update();
+
+            // Subtle ground reference grid — does not represent road data, just spatial orientation
+            const gridHelper = new THREE.GridHelper(120, 60, 0x0a2233, 0x071522);
+            gridHelper.position.y = -1.62;
+            scene.add(gridHelper);
+
+            // Ambient + Directional Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0x00f3ff, 0.8);
+            dirLight.position.set(20, 40, 20);
+            scene.add(dirLight);
+
+            // Autonomous Ego Vehicle Model (Chassis + Headlights)
+            egoVehicleGroup = new THREE.Group();
+            const bodyGeo = new THREE.BoxGeometry(2.1, 1.2, 4.4);
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: 0x0a192f,
+                metalness: 0.8,
+                roughness: 0.2,
+                wireframe: false
+            });
+            const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+            bodyMesh.position.y = -0.6;
+            egoVehicleGroup.add(bodyMesh);
+
+            // Glowing cyan outline for ego vehicle
+            const edgesGeo = new THREE.EdgesGeometry(bodyGeo);
+            const edgesMat = new THREE.LineBasicMaterial({ color: 0x00f3ff, linewidth: 2 });
+            const edgesMesh = new THREE.LineSegments(edgesGeo, edgesMat);
+            edgesMesh.position.y = -0.6;
+            egoVehicleGroup.add(edgesMesh);
+
+            // Headlights
+            const lightGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.2, 16);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
+            const hl1 = new THREE.Mesh(lightGeo, lightMat);
+            hl1.rotation.x = Math.PI / 2;
+            hl1.position.set(-0.7, -0.6, 2.2);
+            const hl2 = hl1.clone();
+            hl2.position.set(0.7, -0.6, 2.2);
+            egoVehicleGroup.add(hl1);
+            egoVehicleGroup.add(hl2);
+
+            scene.add(egoVehicleGroup);
+
+            // Bounding Boxes Group
+            boundingBoxesGroup = new THREE.Group();
+            scene.add(boundingBoxesGroup);
+
+            // LiDAR Point Cloud Geometry
+            const lidarGeo = new THREE.BufferGeometry();
+            const lidarMat = new THREE.PointsMaterial({
+                size: 0.32,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.90
+            });
+            lidarPointCloud = new THREE.Points(lidarGeo, lidarMat);
+            scene.add(lidarPointCloud);
+
+
+            // NOTE: No hardcoded road geometry. Road surface is class 0 (TERRAIN/Green) in the
+            // authentic C++ PointNet++ point cloud. The GridHelper above provides spatial orientation.
+
+            // Camera Viewing Frustum Wireframe (Pyramid)
+            const frustumMat = new THREE.LineBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.5 });
+            const frustumGeo = new THREE.BufferGeometry();
+            const fPoints = [
+                new THREE.Vector3(0, 0.4, 1.8), new THREE.Vector3(-6, 3.5, 14),
+                new THREE.Vector3(0, 0.4, 1.8), new THREE.Vector3(6, 3.5, 14),
+                new THREE.Vector3(0, 0.4, 1.8), new THREE.Vector3(6, -1.6, 14),
+                new THREE.Vector3(0, 0.4, 1.8), new THREE.Vector3(-6, -1.6, 14),
+                // Outer rectangle
+                new THREE.Vector3(-6, 3.5, 14), new THREE.Vector3(6, 3.5, 14),
+                new THREE.Vector3(6, 3.5, 14), new THREE.Vector3(6, -1.6, 14),
+                new THREE.Vector3(6, -1.6, 14), new THREE.Vector3(-6, -1.6, 14),
+                new THREE.Vector3(-6, -1.6, 14), new THREE.Vector3(-6, 3.5, 14)
+            ];
+            frustumGeo.setFromPoints(fPoints);
+            frustumWireframe = new THREE.LineSegments(frustumGeo, frustumMat);
+            frustumWireframe.visible = false;
+            scene.add(frustumWireframe);
+
+            // Ingest authentic C++ PointNet++ LiDAR scan on load
+            fetchLidarBenchmarkScan();
+
+            // Resize listener
+            window.addEventListener('resize', onWindowResize);
+
+            // Render loop
+            animate();
+        }
+
+        function onWindowResize() {
+            if (!container) return;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+
+            const gridVp = document.getElementById('gridContainer');
+            gridCanvas.width = gridVp.clientWidth;
+            gridCanvas.height = gridVp.clientHeight;
+            render2DGrid();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        btnRecenter3D.addEventListener('click', () => {
+            camera.position.set(-18, 22, -26);
+            controls.target.set(0, 0, 10);
+            controls.update();
+        });
+
+        // =========================================================================
+        // C++ POINTNET++ LIDAR PERCEPTION PIPELINE — LIVE DATA FETCH
+        // =========================================================================
+        async function fetchLidarBenchmarkScan() {
+            const dot = document.getElementById('pipelineStatusDot');
+            try {
+                const resp = await fetch('/api/lidar/scan');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                if (dot) { dot.style.background = '#10b981'; dot.style.boxShadow = '0 0 6px #10b981'; }
+
+                // === Update C++ Core Telemetry HUD ===
+                const m = data.metrics;
+                hudRam.innerText         = `${m.ram_mb.toFixed(1)} MB`;
+                hudLatency.innerText     = `${m.inference_time_ms.toFixed(1)} ms`;
+                hudTotalLatency.innerText= `${m.total_time_ms.toFixed(1)} ms`;
+                hudFps.innerText         = `${m.fps.toFixed(2)} Hz`;
+
+                document.getElementById('valRawPoints').innerText      = m.input_points.toLocaleString();
+                document.getElementById('valActiveCells').innerText    = m.active_cells.toLocaleString();
+                document.getElementById('valTrackedVehicles').innerText= m.active_tracks;
+
+                // Execution breakdown (from real C++ timings)
+                const ep = document.getElementById('metPreprocess');
+                const ei = document.getElementById('metInference');
+                const et = document.getElementById('metTracking');
+                const em = document.getElementById('metMapping');
+                if (ep) ep.innerText = `${m.preprocess_time_ms.toFixed(1)} ms`;
+                if (ei) ei.innerText = `${m.inference_time_ms.toFixed(1)} ms`;
+                if (et) et.innerText = `${m.tracking_time_ms.toFixed(2)} ms`;
+                if (em) em.innerText = `${m.mapping_time_ms.toFixed(1)} ms`;
+
+                // === Ingest authentic PointNet++ segmented point cloud ===
+                // C++ KITTI frame: p[0]=Forward(X), p[1]=Lateral(Y), p[2]=Vertical(Z), p[3]=Intensity, p[4]=SemanticClass
+                // Three.js coords:  x = -p[1] (lateral), y = p[2] (elevation), z = p[0] (forward)
+                if (data.points && data.points.length > 0) {
+                    lidarPoints = data.points.map(p => ({
+                        x: -p[1],
+                        y:  p[2],
+                        z:  p[0],
+                        intensity: (p[3] !== undefined) ? p[3] : 0.5,
+                        semClass:  (p[4] !== undefined) ? p[4] : 0
+                    }));
+                    updateLidarThreeGeometry();
+                }
+
+                // === Ingest Kalman-tracked dynamic objects ===
+                if (data.tracks) {
+                    tracksData = data.tracks.map(t => ({
+                        id:    t.id,
+                        cls:   t.class,
+                        x:    -t.y,             // lateral in Three.js
+                        y:     t.z || -0.8,
+                        z:     t.x,             // forward in Three.js
+                        w:     t.width  || 2.0,
+                        l:     t.length || 4.5,
+                        h:     1.6,
+                        vx:    t.vx || 0,
+                        vy:    t.vy || 0
+                    }));
+                    updateTrackBoundingBoxes();
+                    updateTracksTable();
+                }
+
+                // === Ingest active 2.5D cells from C++ Quadtree Grid ===
+                if (data.cells) {
+                    gridCells = data.cells;
+                }
+
+                updatePointsHud();
+                if (activeTab === 'BEV') render2DGrid();
+                appendLog(`C++ pipeline: ${m.input_points.toLocaleString()} pts → ${lidarPoints.length.toLocaleString()} classified | ${m.active_tracks} tracks | ${m.active_cells.toLocaleString()} cells | ${m.total_time_ms.toFixed(1)} ms`, 'ok');
+            } catch (err) {
+                const dot = document.getElementById('pipelineStatusDot');
+                if (dot) { dot.style.background = '#ef4444'; dot.style.boxShadow = 'none'; }
+                appendLog(`C++ pipeline error: ${err.message}`, 'warn');
+            }
+        }
+
+        // Live polling: re-fetch C++ pipeline data every 3.5 seconds automatically
+        let lidarPollTimer = null;
+        function startLidarPolling() {
+            if (lidarPollTimer) clearInterval(lidarPollTimer);
+            lidarPollTimer = setInterval(() => {
+                fetchLidarBenchmarkScan();
+            }, 3500);
+        }
+
+        function updateLidarThreeGeometry() {
+            if (!lidarPointCloud || lidarPoints.length === 0) return;
+            const count = lidarPoints.length;
+            const positions = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+
+            // If in True RGB mode and video/camera is active, sample real video pixels
+            let videoPixels = null;
+            if (colorMode === 'rgb' && isWebcamRunning && webcamVideo && webcamVideo.videoWidth) {
+                try {
+                    offCtx.drawImage(webcamVideo, 0, 0, sampleW, sampleH);
+                    videoPixels = offCtx.getImageData(0, 0, sampleW, sampleH).data;
+                } catch (e) {}
+            }
+
+            for (let i = 0; i < count; i++) {
+                const pt = lidarPoints[i];
+                positions[i * 3] = pt.x;
+                positions[i * 3 + 1] = pt.y;
+                positions[i * 3 + 2] = pt.z;
+
+                let c = new THREE.Color();
+                if (colorMode === 'semantics') {
+                    // Authentic PointNet++ Classes:
+                    // 0: TERRAIN (Road / Ground Surface) -> Emerald Green
+                    // 1: STATIC_OBSTACLE (Curbs, Buildings, Trees, Poles) -> Cyan
+                    // 2: DYNAMIC_OBSTACLE (Tracked Vehicles, Pedestrians) -> Amber/Orange
+                    if (pt.semClass === 2) {
+                        c.setHex(0xf59e0b); // Dynamic Vehicles / Obstacles (Amber/Orange)
+                    } else if (pt.semClass === 1) {
+                        c.setHex(0x00f3ff); // Static Structures / Curbs / Trees (Cyan)
+                    } else {
+                        c.setHex(0x10b981); // Road / Ground Surface (Emerald Green)
+                    }
+                } else if (colorMode === 'elevation') {
+                    // Physical height elevation
+                    const normY = THREE.MathUtils.clamp((pt.y + 2.0) / 4.0, 0, 1);
+                    c.setHSL(0.55 + normY * 0.4, 0.95, 0.55);
+                } else {
+                    // True RGB Mode:
+                    // If video stream is active, project 3D point into the camera image plane!
+                    let sampled = false;
+                    if (videoPixels && pt.z > 1.0) {
+                        const u = (pt.x / pt.z) * 1.35 + 0.5;
+                        const v = (-pt.y / pt.z) * 1.35 + 0.45;
+                        if (u >= 0 && u < 1 && v >= 0 && v < 1) {
+                            const px = Math.floor(u * sampleW);
+                            const py = Math.floor(v * sampleH);
+                            const pIdx = (py * sampleW + px) * 4;
+                            c.setRGB(videoPixels[pIdx] / 255.0, videoPixels[pIdx + 1] / 255.0, videoPixels[pIdx + 2] / 255.0);
+                            sampled = true;
+                        }
+                    }
+
+                    if (!sampled) {
+                        // Authentic surface reflectance from LiDAR intensity & semantics
+                        const intens = THREE.MathUtils.clamp(pt.intensity, 0.15, 0.95);
+                        if (pt.semClass === 2) {
+                            c.setHex(0xf59e0b); // Vehicle
+                        } else if (pt.semClass === 0) {
+                            // Dark road asphalt modulated by intensity
+                            c.setRGB(0.18 * intens, 0.24 * intens, 0.30 * intens);
+                        } else {
+                            // Roadside structures
+                            c.setRGB(0.35 * intens, 0.45 * intens, 0.55 * intens);
+                        }
+                    }
+                }
+
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
+            }
+
+            lidarPointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            lidarPointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            lidarPointCloud.geometry.attributes.position.needsUpdate = true;
+            lidarPointCloud.geometry.attributes.color.needsUpdate = true;
+        }
+
+        function updateTrackBoundingBoxes() {
+            // Clear previous bounding boxes
+            while (boundingBoxesGroup.children.length > 0) {
+                boundingBoxesGroup.remove(boundingBoxesGroup.children[0]);
+            }
+            tracksData.forEach(tr => {
+                const boxGeo  = new THREE.BoxGeometry(tr.w || 2.0, tr.h || 1.6, tr.l || 4.5);
+                const edgeGeo = new THREE.EdgesGeometry(boxGeo);
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2 });
+                const box     = new THREE.LineSegments(edgeGeo, edgeMat);
+                box.position.set(tr.x, (tr.y || -0.8) + (tr.h || 1.6) / 2, tr.z);
+                boundingBoxesGroup.add(box);
+            });
+        }
+
+        function updateTracksTable() {
+            const tbody = document.getElementById('tracksTableBody');
+            const tagActive = document.getElementById('tagActiveTracks');
+            if (!tbody) return;
+
+            if (tracksData.length === 0) {
+                tbody.innerHTML = '<tr id="tracks-empty-row"><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">No tracks detected</td></tr>';
+                if (tagActive) tagActive.innerText = '0 ACTIVE';
+                return;
+            }
+
+            if (tagActive) tagActive.innerText = `${tracksData.length} ACTIVE`;
+
+            tbody.innerHTML = tracksData.map(tr => {
+                // Compute range (distance from ego)
+                const range = Math.sqrt(tr.z * tr.z + tr.x * tr.x).toFixed(1);
+                // Speed from velocity components (m/s → km/h)
+                const speedMs  = Math.sqrt((tr.vx || 0) ** 2 + (tr.vy || 0) ** 2);
+                const speedKph = (speedMs * 3.6).toFixed(0);
+                // Heading angle
+                const heading  = (tr.vx || 0) !== 0 ? (Math.atan2(tr.vx, tr.vy) * 180 / Math.PI).toFixed(1) : '0.0';
+                const headSign = parseFloat(heading) >= 0 ? '+' : '';
+                return `<tr>
+                    <td style="color:var(--cyan);">#${tr.id}</td>
+                    <td>${tr.cls || 'Vehicle'}</td>
+                    <td>${range}m</td>
+                    <td>${speedKph} km/h</td>
+                    <td>${headSign}${heading}°</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // =========================================================================
+        // UNIVERSAL CAMERA SENSOR (MOBILE REAR/FRONT, WIRELESS PHONE, USB & IP STREAM)
+        // =========================================================================
+        // =========================================================================
+        // PERCEPTION MEDIA ENGINE (TEST VIDEO UPLOAD & LIVE CAMERA)
+        // =========================================================================
+        const segTabVideo = document.getElementById('segTabVideo');
+        const segTabCam = document.getElementById('segTabCam');
+        const sectionVideoUpload = document.getElementById('sectionVideoUpload');
+        const sectionLiveCam = document.getElementById('sectionLiveCam');
+        const videoDropZone = document.getElementById('videoDropZone');
+        const videoFileInput = document.getElementById('videoFileInput');
+        const videoControlsGroup = document.getElementById('videoControlsGroup');
+        const cameraControlsGroup = document.getElementById('cameraControlsGroup');
+        const btnPlayPauseVideo = document.getElementById('btnPlayPauseVideo');
+        const playPauseIcon = document.getElementById('playPauseIcon');
+        const videoScrubber = document.getElementById('videoScrubber');
+        const videoTimeDisplay = document.getElementById('videoTimeDisplay');
+        const videoFileName = document.getElementById('videoFileName');
+        const btnToggleLoop = document.getElementById('btnToggleLoop');
+        const cameraSourceSelect = document.getElementById('cameraSourceSelect');
+        const btnFlipCam = document.getElementById('btnFlipCam');
+        const placeholderTitle = document.getElementById('placeholderTitle');
+        const placeholderSub = document.getElementById('placeholderSub');
+
+        let isVideoMode = true;
+        let isVideoPlaying = false;
+        let isVideoLooping = true;
+        let currentFacingMode = 'environment';
+
+        // Tab Switching: Video Upload vs Live Camera
+        segTabVideo.addEventListener('click', () => {
+            isVideoMode = true;
+            segTabVideo.classList.add('active');
+            segTabCam.classList.remove('active');
+            sectionVideoUpload.style.display = 'block';
+            sectionLiveCam.style.display = 'none';
+            cameraControlsGroup.style.display = 'none';
+            // Only show video controls if a video is actually loaded
+            const hasVideo = webcamVideo.src && webcamVideo.src !== window.location.href;
+            videoControlsGroup.style.display = hasVideo ? 'block' : 'none';
+        });
+
+        segTabCam.addEventListener('click', () => {
+            isVideoMode = false;
+            segTabCam.classList.add('active');
+            segTabVideo.classList.remove('active');
+            sectionVideoUpload.style.display = 'none';
+            sectionLiveCam.style.display = 'block';
+            videoControlsGroup.style.display = 'none';
+            cameraControlsGroup.style.display = 'block';
+        });
+
+        // Drag & Drop Video Handling
+        videoDropZone.addEventListener('click', () => {
+            videoFileInput.click();
+        });
+
+        videoDropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            videoDropZone.classList.add('dragover');
+        });
+
+        videoDropZone.addEventListener('dragleave', () => {
+            videoDropZone.classList.remove('dragover');
+        });
+
+        videoDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            videoDropZone.classList.remove('dragover');
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                loadVideoFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        videoFileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+                loadVideoFile(e.target.files[0]);
+            }
+        });
+
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return '00:00';
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function updateVideoTimeDisplay() {
+            const cur = formatTime(webcamVideo.currentTime);
+            const dur = formatTime(webcamVideo.duration);
+            videoTimeDisplay.innerText = `${cur} / ${dur}`;
+        }
+
+        function loadVideoFile(file) {
+            stopWebcam();
+            isVideoMode = true;
+            const url = URL.createObjectURL(file);
+            webcamVideo.srcObject = null;
+            webcamVideo.src = url;
+            webcamVideo.muted = true;   // Required for autoplay policy in most browsers
+            webcamVideo.loop = isVideoLooping;
+            webcamVideo.style.display = 'block';
+            camPlaceholder.style.display = 'none';
+            camHudOverlay.style.display = 'flex';
+            videoControlsGroup.style.display = 'block';
+            cameraControlsGroup.style.display = 'none';
+            videoFileName.innerText = `${file.name} (${(file.size / (1024*1024)).toFixed(1)} MB)`;
+
+            camStatusBadge.className = 'status-badge online';
+            camStatusBadge.innerHTML = '<span class="pulse-indicator"></span> Video Stream Online';
+
+            const activateStreaming = () => {
+                isVideoPlaying = true;
+                isWebcamRunning = true;
+                playPauseIcon.innerText = '⏸';
+                frustumWireframe.visible = true;
+                startStreamingSourceToThree(webcamVideo);
+                appendLog(`Video: ${file.name} (${webcamVideo.videoWidth}x${webcamVideo.videoHeight}) — RGB fused into 3D point cloud.`, 'ok');
+            };
+
+            webcamVideo.onloadedmetadata = () => {
+                const lbl = document.getElementById('camResLabel');
+                if (lbl) lbl.innerText = `${webcamVideo.videoWidth}x${webcamVideo.videoHeight}`;
+                updateVideoTimeDisplay();
+            };
+
+            webcamVideo.oncanplay = () => {
+                webcamVideo.play().then(activateStreaming).catch(() => {
+                    // Autoplay blocked — user must press Play manually
+                    // But we still set up streaming so pressing play works immediately
+                    isWebcamRunning = true;
+                    playPauseIcon.innerText = '▶';
+                    appendLog(`Video ready: ${file.name}. Press ▶ to start RGB fusion.`, 'info');
+                });
+            };
+        }
+
+        btnPlayPauseVideo.addEventListener('click', () => {
+            if (webcamVideo.paused) {
+                webcamVideo.play().then(() => {
+                    playPauseIcon.innerText = '⏸';
+                    isVideoPlaying = true;
+                    // Ensure streaming is active
+                    if (!webcamStreamInterval) startStreamingSourceToThree(webcamVideo);
+                });
+            } else {
+                webcamVideo.pause();
+                playPauseIcon.innerText = '▶';
+                isVideoPlaying = false;
+            }
+        });
+
+        // Scrubber progress updates
+        webcamVideo.addEventListener('timeupdate', () => {
+            if (webcamVideo.duration) {
+                videoScrubber.value = (webcamVideo.currentTime / webcamVideo.duration) * 100;
+                updateVideoTimeDisplay();
+            }
+        });
+
+        videoScrubber.addEventListener('input', () => {
+            if (webcamVideo.duration) {
+                webcamVideo.currentTime = (videoScrubber.value / 100) * webcamVideo.duration;
+                updateVideoTimeDisplay();
+                // Refresh colors if in RGB mode
+                if (colorMode === 'rgb') updateLidarThreeGeometry();
+            }
+        });
+
+        // Loop Toggle
+        btnToggleLoop.addEventListener('click', () => {
+            isVideoLooping = !isVideoLooping;
+            webcamVideo.loop = isVideoLooping;
+            btnToggleLoop.innerText = isVideoLooping ? '🔁 Loop: ON' : '➡️ Loop: OFF';
+            btnToggleLoop.style.borderColor = isVideoLooping ? 'var(--cyan)' : 'var(--border-dim)';
+            btnToggleLoop.style.color = isVideoLooping ? 'var(--cyan)' : 'var(--text-muted)';
+        });
+
+        // Enumerate video devices for Live Camera mode
+        async function enumerateVideoDevices() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoInputs = devices.filter(d => d.kind === 'videoinput');
+                const curr = cameraSourceSelect.value;
+
+                cameraSourceSelect.innerHTML = `
+                    <option value="auto_env">📷 Rear Camera (Environment)</option>
+                    <option value="auto_user">🤳 Front Camera (Selfie / Laptop)</option>
+                `;
+
+                videoInputs.forEach((dev, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = dev.deviceId;
+                    opt.innerText = dev.label ? `📹 ${dev.label}` : `Camera Device ${idx + 1}`;
+                    cameraSourceSelect.appendChild(opt);
+                });
+
+                if (curr && cameraSourceSelect.querySelector(`option[value="${curr}"]`)) {
+                    cameraSourceSelect.value = curr;
+                }
+            } catch (err) {}
+        }
+
+        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+            navigator.mediaDevices.addEventListener('devicechange', enumerateVideoDevices);
+        }
+
+        btnToggleCam.addEventListener('click', async () => {
+            if (!isWebcamRunning || (webcamVideo.src && !webcamVideo.srcObject)) {
+                await startCameraStream();
+            } else {
+                stopWebcam();
+            }
+        });
+
+        async function startCameraStream() {
+            const mode = cameraSourceSelect.value;
+            let constraints = { audio: false };
+
+            if (mode === 'auto_env') {
+                constraints.video = { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } };
+                currentFacingMode = 'environment';
+            } else if (mode === 'auto_user') {
+                constraints.video = { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } };
+                currentFacingMode = 'user';
+            } else if (mode) {
+                constraints.video = { deviceId: { exact: mode }, width: { ideal: 1280 }, height: { ideal: 720 } };
+            } else {
+                constraints.video = { facingMode: { ideal: currentFacingMode } };
+            }
+
+            try {
+                appendLog(`Opening live camera (${currentFacingMode})...`, "info");
+                try {
+                    webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+                } catch (err1) {
+                    webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                }
+
+                webcamVideo.src = "";
+                webcamVideo.srcObject = webcamStream;
+                webcamVideo.style.display = 'block';
+                camPlaceholder.style.display = 'none';
+                camHudOverlay.style.display = 'block';
+                videoControlsGroup.style.display = 'none';
+
+                camStatusBadge.className = 'status-badge online';
+                camStatusBadge.innerHTML = '<span class="pulse-indicator"></span> Real Camera Online';
+                btnToggleCam.innerHTML = '<span>⏹ Stop Camera</span>';
+                btnToggleCam.className = 'btn danger';
+                isWebcamRunning = true;
+
+                const track = webcamStream.getVideoTracks()[0];
+                const settings = track.getSettings ? track.getSettings() : {};
+                document.getElementById('camResLabel').innerText = `${settings.width || 640}x${settings.height || 480}`;
+
+                frustumWireframe.visible = true;
+                appendLog(`Live camera online: ${settings.width || 640}x${settings.height || 480}.`, "ok");
+                enumerateVideoDevices();
+                startStreamingSourceToThree(webcamVideo);
+            } catch (err) {
+                appendLog(`Camera error: ${err.message}`, "warn");
+                alert("Could not access camera device: " + err.message);
+            }
+        }
+
+        btnFlipCam.addEventListener('click', async () => {
+            currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+            cameraSourceSelect.value = (currentFacingMode === 'environment') ? 'auto_env' : 'auto_user';
+            appendLog(`Flipping to ${currentFacingMode} camera...`, "info");
+            if (isWebcamRunning && webcamStream) {
+                stopWebcam();
+                setTimeout(startCameraStream, 200);
+            }
+        });
+
+        function stopWebcam() {
+            if (webcamStreamInterval) {
+                clearInterval(webcamStreamInterval);
+                webcamStreamInterval = null;
+            }
+            if (frameUploadInterval) {
+                clearInterval(frameUploadInterval);
+                frameUploadInterval = null;
+            }
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(t => t.stop());
+                webcamStream = null;
+            }
+            // Clear event handlers to prevent ghost callbacks from old video
+            webcamVideo.oncanplay = null;
+            webcamVideo.onloadedmetadata = null;
+            webcamVideo.srcObject = null;
+            webcamVideo.src = "";
+            webcamVideo.style.display = 'none';
+            camPlaceholder.style.display = 'flex';
+            camHudOverlay.style.display = 'none';
+            videoControlsGroup.style.display = 'none';
+
+            camStatusBadge.className = 'status-badge offline';
+            camStatusBadge.innerHTML = '<span class="pulse-indicator"></span> Standby';
+            btnToggleCam.innerHTML = '<span>▶ Start Live Camera</span>';
+            btnToggleCam.className = 'btn primary';
+            isWebcamRunning = false;
+            isVideoPlaying = false;
+
+            frustumWireframe.visible = false;
+            tagCamSensorStatus.innerText = 'CAM 3D: IDLE';
+            tagCamSensorStatus.style.color = '#94a3b8';
+            updatePointsHud();
+            updateLidarThreeGeometry();
+            appendLog("Sensor stream stopped.", "info");
+        }
+
+        let webcamStreamInterval = null;
+        let frameUploadInterval = null;
+
+        // Off-canvas for RGB pixel sampling (used in True RGB mode)
+        const offCanvas = document.createElement('canvas');
+        const sampleW = 320, sampleH = 240;
+        offCanvas.width = sampleW;
+        offCanvas.height = sampleH;
+        const offCtx = offCanvas.getContext('2d');
+
+        // Upload canvas for frame-to-server (sends JPEG to C++ /api/camera/upload)
+        const uploadCanvas = document.createElement('canvas');
+        uploadCanvas.width = 320;
+        uploadCanvas.height = 240;
+        const uploadCtx = uploadCanvas.getContext('2d');
+
+        // Send current video/camera frame as JPEG to C++ server
+        async function sendFrameToServer(sourceElement) {
+            if (!sourceElement || !sourceElement.videoWidth) return;
+            try {
+                uploadCtx.drawImage(sourceElement, 0, 0, uploadCanvas.width, uploadCanvas.height);
+                uploadCanvas.toBlob(async (blob) => {
+                    if (!blob) return;
+                    try {
+                        await fetch('/api/camera/upload', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'image/jpeg' },
+                            body: blob
+                        });
+                    } catch (_) {}
+                }, 'image/jpeg', 0.7);
+            } catch (_) {}
+        }
+
+        function startStreamingSourceToThree(sourceElement) {
+            if (webcamStreamInterval) clearInterval(webcamStreamInterval);
+            if (frameUploadInterval) clearInterval(frameUploadInterval);
+
+            tagCamSensorStatus.innerText = isVideoMode ? 'VIDEO: ONLINE (RGB FUSED)' : 'CAM: ONLINE (RGB FUSED)';
+            tagCamSensorStatus.style.color = '#10b981';
+            updatePointsHud();
+
+            // Color fusion loop (~15 FPS)
+            webcamStreamInterval = setInterval(() => {
+                if (!isWebcamRunning) return;
+                if (sourceElement.tagName === 'VIDEO' && (!sourceElement.videoWidth || sourceElement.paused)) return;
+                if (colorMode === 'rgb') {
+                    updateLidarThreeGeometry();
+                }
+            }, 66);
+
+            // Frame upload to C++ server (~2 FPS — enough for camera awareness)
+            frameUploadInterval = setInterval(() => {
+                if (!isWebcamRunning) return;
+                if (sourceElement.tagName === 'VIDEO' && (!sourceElement.videoWidth || sourceElement.paused)) return;
+                sendFrameToServer(sourceElement);
+            }, 500);
+        }
+
+        function updatePointsHud() {
+            tagPointsCount.innerText = `POINTS: ${lidarPoints.length.toLocaleString()} (C++ LiDAR)`;
+        }
+
+        // Color Mode Buttons
+        const btnModeRgb = document.getElementById('btnModeRgb');
+        const btnModeSemantics = document.getElementById('btnModeSemantics');
+        const btnModeElevation = document.getElementById('btnModeElevation');
+
+        btnModeRgb.addEventListener('click', () => {
+            colorMode = 'rgb';
+            btnModeRgb.classList.add('active');
+            btnModeSemantics.classList.remove('active');
+            btnModeElevation.classList.remove('active');
+            updateLidarThreeGeometry();
+            if (isWebcamRunning && webcamVideo) projectElementToThree(webcamVideo);
+        });
+
+        btnModeSemantics.addEventListener('click', () => {
+            colorMode = 'semantics';
+            btnModeSemantics.classList.add('active');
+            btnModeRgb.classList.remove('active');
+            btnModeElevation.classList.remove('active');
+            updateLidarThreeGeometry();
+            if (isWebcamRunning && webcamVideo) projectElementToThree(webcamVideo);
+        });
+
+        btnModeElevation.addEventListener('click', () => {
+            colorMode = 'elevation';
+            btnModeElevation.classList.add('active');
+            btnModeRgb.classList.remove('active');
+            btnModeSemantics.classList.remove('active');
+            updateLidarThreeGeometry();
+            if (isWebcamRunning && webcamVideo) projectElementToThree(webcamVideo);
+        });
+
+        // Tab Switching
+        const tab3D = document.getElementById('tab3D');
+        const tabBEV = document.getElementById('tabBEV');
+        const threeContainer = document.getElementById('threeContainer');
+        const gridContainer = document.getElementById('gridContainer');
+        const hudLegend = document.getElementById('hudLegend');
+
+        tab3D.addEventListener('click', () => {
+            activeTab = '3D';
+            tab3D.classList.add('active');
+            tabBEV.classList.remove('active');
+            threeContainer.style.display = 'block';
+            gridContainer.style.display = 'none';
+            hudLegend.style.display = 'flex';
+            onWindowResize();
+        });
+
+        tabBEV.addEventListener('click', () => {
+            activeTab = 'BEV';
+            tabBEV.classList.add('active');
+            tab3D.classList.remove('active');
+            threeContainer.style.display = 'none';
+            gridContainer.style.display = 'block';
+            hudLegend.style.display = 'none';
+            onWindowResize();
+            render2DGrid();
+        });
+
+        // =========================================================================
+        // 2.5D BEV OCCUPANCY GRID CANVAS
+        // =========================================================================
+        const gridCanvas = document.getElementById('gridCanvas');
+        const gridCtx = gridCanvas.getContext('2d');
+
+        function render2DGrid() {
+            const w = gridCanvas.width;
+            const h = gridCanvas.height;
+            if (!w || !h) return;
+
+            // Background
+            gridCtx.fillStyle = '#020408';
+            gridCtx.fillRect(0, 0, w, h);
+
+            // Ego is placed at bottom-center so we see more ahead
+            const cx = w / 2;
+            const cy = h * 0.72;
+            const scale = Math.min(w, h) / 100.0;  // 1 metre = scale pixels
+
+            // ── Distance rings with resolution labels ──────────────────────────
+            const bands = [
+                { r: 10,  label: '10 m · 5 cm',  col: 'rgba(0,243,255,0.40)',  fill: 'rgba(0,243,255,0.04)' },
+                { r: 30,  label: '30 m · 15 cm', col: 'rgba(56,189,248,0.28)', fill: 'rgba(56,189,248,0.02)' },
+                { r: 60,  label: '60 m · 30 cm', col: 'rgba(168,85,247,0.20)', fill: 'rgba(168,85,247,0.01)' },
+                { r: 100, label: '100 m · 50 cm',col: 'rgba(100,116,139,0.12)',fill: 'transparent' }
+            ];
+
+            // Draw fills outermost first
+            bands.slice().reverse().forEach(b => {
+                gridCtx.beginPath();
+                gridCtx.arc(cx, cy, b.r * scale, 0, Math.PI * 2);
+                gridCtx.fillStyle = b.fill;
+                gridCtx.fill();
+                gridCtx.strokeStyle = b.col;
+                gridCtx.lineWidth = 1;
+                gridCtx.stroke();
+
+                // Label on right side of each ring
+                const lx = cx + b.r * scale + 5;
+                const ly = cy;
+                if (lx < w - 4) {
+                    gridCtx.fillStyle = b.col;
+                    gridCtx.font = 'bold 9px JetBrains Mono';
+                    gridCtx.fillText(b.label, lx, ly);
+                }
+            });
+
+            // Crosshairs
+            gridCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+            gridCtx.lineWidth = 1;
+            gridCtx.setLineDash([4, 8]);
+            gridCtx.beginPath();
+            gridCtx.moveTo(cx, 0); gridCtx.lineTo(cx, h);
+            gridCtx.moveTo(0, cy); gridCtx.lineTo(w, cy);
+            gridCtx.stroke();
+            gridCtx.setLineDash([]);
+
+            // ── Render point data ──────────────────────────────────────────────
+            // Source: prefer Quadtree cells; fall back to raw LiDAR points
+            let terrainCount = 0, staticCount = 0, dynCount = 0;
+
+            if (gridCells && gridCells.length > 0) {
+                // C++ Quadtree grid cells — render with size proportional to cell resolution
+                gridCells.forEach(cell => {
+                    // cell.x = forward (KITTI X), cell.y = lateral (KITTI Y)
+                    // BEV: screen_x = cx - cell.y*scale,  screen_y = cy - cell.x*scale
+                    const sx = cx - cell.y * scale;
+                    const sy = cy - cell.x * scale;
+                    if (sx < 0 || sx > w || sy < 0 || sy > h) return;
+
+                    // Pixel size: at least 3 px; proportional to cell resolution (metres)
+                    // 5cm cell → ~0.5 px raw → clamp to 3; 50cm → 5 px
+                    const sz = Math.max(3, cell.res * scale * 0.9);
+
+                    if (cell.class === 2) {           // DYNAMIC_OBSTACLE — vehicles (amber, largest)
+                        gridCtx.fillStyle = 'rgba(245,158,11,0.85)';
+                        gridCtx.fillRect(sx - sz, sy - sz, sz * 2, sz * 2);
+                        dynCount++;
+                    } else if (cell.class === 1) {    // STATIC_OBSTACLE — structures/trees (cyan)
+                        gridCtx.fillStyle = 'rgba(0,243,255,0.55)';
+                        gridCtx.fillRect(sx - sz/2, sy - sz/2, sz, sz);
+                        staticCount++;
+                    } else {                           // TERRAIN — road / ground (emerald green)
+                        gridCtx.fillStyle = 'rgba(16,185,129,0.45)';
+                        gridCtx.fillRect(sx - sz/2, sy - sz/2, sz, sz);
+                        terrainCount++;
+                    }
+                });
+            } else if (lidarPoints.length > 0) {
+                // Fallback: raw LiDAR points projected onto BEV
+                // pt.x = Three.js lateral (=-KITTI Y),  pt.z = Three.js forward (=KITTI X)
+                lidarPoints.forEach(pt => {
+                    const sx = cx + pt.x * scale;
+                    const sy = cy - pt.z * scale;
+                    if (sx < 0 || sx > w || sy < 0 || sy > h) return;
+
+                    if (pt.semClass === 2) {
+                        gridCtx.fillStyle = 'rgba(245,158,11,0.85)';
+                        gridCtx.fillRect(sx - 2.5, sy - 2.5, 5, 5);
+                        dynCount++;
+                    } else if (pt.semClass === 1) {
+                        gridCtx.fillStyle = 'rgba(0,243,255,0.55)';
+                        gridCtx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
+                        staticCount++;
+                    } else {
+                        gridCtx.fillStyle = 'rgba(16,185,129,0.40)';
+                        gridCtx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
+                        terrainCount++;
+                    }
+                });
+            }
+
+            // ── Tracked vehicle bounding boxes with ID labels ──────────────────
+            tracksData.forEach(tr => {
+                // tr.x = Three.js lateral,  tr.z = Three.js forward
+                const sx = cx + tr.x * scale;
+                const sy = cy - tr.z * scale;
+                const bw = (tr.w || 2.0) * scale;
+                const bl = (tr.l || 4.5) * scale;
+
+                // Glowing amber box
+                gridCtx.strokeStyle = '#f59e0b';
+                gridCtx.lineWidth = 2;
+                gridCtx.shadowColor = '#f59e0b';
+                gridCtx.shadowBlur = 6;
+                gridCtx.strokeRect(sx - bw / 2, sy - bl / 2, bw, bl);
+                gridCtx.shadowBlur = 0;
+
+                // Track ID label
+                gridCtx.fillStyle = '#f59e0b';
+                gridCtx.font = 'bold 9px JetBrains Mono';
+                gridCtx.fillText(`#${tr.id}`, sx - bw/2, sy - bl/2 - 3);
+
+                // Velocity arrow (if moving)
+                const speed = Math.sqrt((tr.vx||0)**2 + (tr.vy||0)**2);
+                if (speed > 0.1) {
+                    const vscale = scale * 2.0;
+                    gridCtx.strokeStyle = '#fbbf24';
+                    gridCtx.lineWidth = 1.5;
+                    gridCtx.beginPath();
+                    gridCtx.moveTo(sx, sy);
+                    gridCtx.lineTo(sx - tr.vy * vscale, sy - tr.vx * vscale);
+                    gridCtx.stroke();
+                }
+            });
+
+            // ── Ego vehicle symbol ─────────────────────────────────────────────
+            gridCtx.shadowColor = '#00f3ff';
+            gridCtx.shadowBlur = 14;
+            gridCtx.fillStyle = '#00f3ff';
+            gridCtx.beginPath();
+            gridCtx.moveTo(cx,     cy - 12);
+            gridCtx.lineTo(cx - 7, cy + 7);
+            gridCtx.lineTo(cx,     cy + 3);
+            gridCtx.lineTo(cx + 7, cy + 7);
+            gridCtx.closePath();
+            gridCtx.fill();
+            gridCtx.shadowBlur = 0;
+
+            // EGO label
+            gridCtx.fillStyle = '#00f3ff';
+            gridCtx.font = 'bold 8px JetBrains Mono';
+            gridCtx.textAlign = 'center';
+            gridCtx.fillText('EGO', cx, cy + 20);
+            gridCtx.textAlign = 'left';
+
+            // ── Point-class breakdown HUD (top-left) ──────────────────────────
+            const hudX = 10, hudY = 14;
+            gridCtx.fillStyle = 'rgba(2,4,8,0.75)';
+            gridCtx.fillRect(hudX - 4, hudY - 12, 168, 60);
+
+            gridCtx.font = 'bold 9px JetBrains Mono';
+            gridCtx.fillStyle = 'rgba(255,255,255,0.5)';
+            gridCtx.fillText('SEMANTIC OCCUPANCY MAP', hudX, hudY);
+
+            const classes = [
+                { col: '#10b981', label: `TERRAIN / ROAD`, count: terrainCount },
+                { col: '#00f3ff', label: `STATIC (structures)`, count: staticCount },
+                { col: '#f59e0b', label: `DYNAMIC (vehicles)`,  count: dynCount }
+            ];
+            classes.forEach((c, i) => {
+                const y = hudY + 13 + i * 14;
+                gridCtx.fillStyle = c.col;
+                gridCtx.fillRect(hudX, y - 7, 8, 8);
+                gridCtx.fillStyle = 'rgba(255,255,255,0.75)';
+                gridCtx.font = '9px JetBrains Mono';
+                gridCtx.fillText(`${c.label}  ${c.count.toLocaleString()}`, hudX + 12, y);
+            });
+        }
+
+        // =========================================================================
+        // BENCHMARK LIDAR C++ SERVER INGEST
+        // =========================================================================
+        btnProcessLidar.addEventListener('click', async () => {
+            btnProcessLidar.disabled = true;
+            btnProcessLidar.innerText = "⏳ Ingesting C++ Core...";
+            await fetchLidarBenchmarkScan();
+            btnProcessLidar.disabled = false;
+            btnProcessLidar.innerHTML = "<span>⚡ Process LiDAR in Native C++</span>";
+        });
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            initThreeJS();
+            enumerateVideoDevices();
+            appendLog('Hardware WebGL 3D Spatial Engine active. Fetching C++ pipeline data...', 'ok');
+            // Initial fetch + start live polling every 3.5 s
+            fetchLidarBenchmarkScan().then(() => startLidarPolling());
+        });
+    </script>
+</body>
+</html>
