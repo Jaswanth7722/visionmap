@@ -215,7 +215,7 @@ with tab1:
     with col_cam:
         st.subheader("Sensor Input Stream")
         if frame_data["camera_frame"] is not None:
-            cam_title = "Hardware Webcam (Live)" if frame_data["is_hardware_camera"] else "Live Driving Camera Feed"
+            cam_title = "Hardware Webcam (Live)" if frame_data["is_hardware_camera"] else "Camera Offline (placeholder — no hardware)"
             st.image(frame_data["camera_frame"], caption=cam_title, use_container_width=True)
             st.info(f"Frame #{frame_data['frame_index']} | Projected {len(frame_data['points'])} 3D metric coordinates "
                     f"(monocular depth estimate: geometry approximate, classes are model output)")

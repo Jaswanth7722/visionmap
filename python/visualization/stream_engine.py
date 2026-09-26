@@ -85,16 +85,22 @@ class CameraProjector:
         # Zero Mock Data Policy: Never fake driving scenes or vehicles when hardware is off
         h, w = 480, 640
         frame = np.zeros((h, w, 3), dtype=np.uint8)
-        cv2.putText(frame, "HARDWARE CAMERA OFFLINE", (w // 2 - 190, h // 2 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        cv2.putText(frame, "No camera detected / Hardware not connected. Zero mock data.", 
-                    (w // 2 - 250, h // 2 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+        if cv2 is not None:
+            cv2.putText(frame, "HARDWARE CAMERA OFFLINE", (w // 2 - 190, h // 2 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            cv2.putText(frame, "No camera detected / Hardware not connected. Zero mock data.",
+                        (w // 2 - 250, h // 2 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+        else:
+            # cv2 itself is unavailable: white banner bar drawn with numpy so
+            # this path never crashes on a missing optional dependency.
+            frame[h // 2 - 14:h // 2 + 14, w // 2 - 200:w // 2 + 200] = (255, 255, 255)
         return frame
 
     def project_to_point_cloud(self, frame_rgb: np.ndarray, num_points: int = 4096) -> np.ndarray:
         """
         Projects RGB image pixels into 3D metric coordinates (X=Forward, Y=Lateral, Z=Height).
-        Returns array of shape (num_points, 4) [x, y, z, intensity].
+        Returns array of shape (M, 4) [x, y, z, intensity] with M <= num_points
+        (the sampling grid rarely divides evenly; exact counts are reported).
         """
         h, w, _ = frame_rgb.shape
         # Uniform sampling across the image plane
@@ -170,7 +176,9 @@ class RealTimePipelineEngine:
         self.onnx_model_path = onnx_model_path
         self.session = None
         self._load_model()
-        self.camera = CameraProjector(0)
+        # Hardware capture is attempted: a present webcam yields live frames,
+        # an absent one yields the honestly labeled offline placeholder.
+        self.camera = CameraProjector(0, enable_hardware=True)
         # Absolute path: the dashboard must not depend on the process CWD.
         self.lidar = LiveLidarStreamer(os.path.join(str(REPO_ROOT), "data", "raw", "000000.bin"))
 
