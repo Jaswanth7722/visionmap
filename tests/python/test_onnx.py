@@ -24,6 +24,7 @@ from python.conversion.export_onnx import (
     export_model_to_onnx,
     validate_onnx_export,
     get_onnx_op_set,
+    load_trained_model,
     STANDARD_ORT_CPP_OPS,
 )
 
@@ -140,3 +141,10 @@ def test_standard_onnx_runtime_cpp_operators_only(onnx_export_artifact):
     assert len(non_standard) == 0, (
         f"Found operators not supported by standard ONNX Runtime C++: {non_standard}"
     )
+
+
+def test_missing_checkpoint_refuses_random_weight_export(tmp_path):
+    """The CLI gate must fail loudly rather than export random weights."""
+    missing_checkpoint = tmp_path / "missing-checkpoint.pth"
+    with pytest.raises(FileNotFoundError, match="Refusing to export randomly initialized"):
+        load_trained_model(str(missing_checkpoint))

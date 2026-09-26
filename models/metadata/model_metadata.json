@@ -4,21 +4,69 @@
   "classes": {
     "0": "terrain",
     "1": "static_obstacle",
-    "2": "dynamic_obstacle"
+    "2": "dynamic_object"
   },
-  "input_shape": [1, 4096, 4],
-  "input_tensor_name": "input_points",
-  "output_shape": [1, 4096, 3],
+  "input_shape": [
+    "batch",
+    "num_points",
+    3
+  ],
+  "input_tensor_name": "points",
+  "output_shape": [
+    "batch",
+    "num_points",
+    3
+  ],
   "output_tensor_name": "logits",
-  "num_parameters": 807299,
+  "dynamic_axes": {
+    "batch": 0,
+    "num_points": 1
+  },
+  "num_parameters": 265571,
   "file_size_bytes": 3232627,
-  "accuracy_test_overall": 0.957,
-  "mean_iou": 0.884,
+  "accuracy_test_overall": 0.8779,
+  "mean_iou": 0.6988,
   "class_iou": {
-    "terrain": 0.948,
-    "static_obstacle": 0.862,
-    "dynamic_obstacle": 0.842
+    "terrain": 0.8432,
+    "static_obstacle": 0.7848,
+    "dynamic_object": 0.4685
+  },
+  "checkpoint_metrics_percent": {
+    "overall_accuracy": 87.79,
+    "mean_iou": 69.88,
+    "per_class_iou": {
+      "terrain": 84.32,
+      "static_obstacle": 78.48,
+      "dynamic_object": 46.85
+    },
+    "per_class_precision": {
+      "terrain": 91.38,
+      "static_obstacle": 88.19,
+      "dynamic_object": 63.18
+    },
+    "per_class_recall": {
+      "terrain": 91.61,
+      "static_obstacle": 87.7,
+      "dynamic_object": 64.44
+    },
+    "best_miou": 69.88
   },
   "deployment_target": "ONNX Runtime C++17",
-  "training_framework": "PyTorch 2.14.0+cu130 (Offline Only)"
+  "training_framework": "PyTorch (Offline Only)",
+  "training_torch_version": "not recorded in checkpoint",
+  "export_producer": {
+    "name": "pytorch",
+    "version": "2.14.0"
+  },
+  "export_environment": {
+    "torch": "2.14.0+cu130",
+    "onnx": "1.23.0",
+    "onnxruntime": "1.26.0"
+  },
+  "provenance": {
+    "checkpoint_file": "D:\\053\\models\\checkpoints\\pointnet2_trained_best.pth",
+    "onnx_file": "D:\\053\\models\\onnx\\pointnet2_semseg.onnx",
+    "generator": "python/conversion/export_onnx.py:save_model_metadata",
+    "regenerated_from_checkpoint_metrics": true
+  }
 }

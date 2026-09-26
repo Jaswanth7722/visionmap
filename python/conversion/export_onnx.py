@@ -23,6 +23,14 @@ if str(REPO_ROOT) not in sys.path:
 
 from python.training.model import PointNet2SemSeg
 
+DEFAULT_CHECKPOINT_PATH = (
+    REPO_ROOT / "models" / "checkpoints" / "pointnet2_trained_best.pth"
+)
+DEFAULT_MODEL_METADATA_PATH = (
+    REPO_ROOT / "models" / "metadata" / "model_metadata.json"
+)
+CANONICAL_CLASS_NAMES = ("terrain", "static_obstacle", "dynamic_object")
+
 # Standard ONNX Runtime C++ operators (excluding custom/contrib domains)
 STANDARD_ORT_CPP_OPS = {
     "Abs", "Acos", "Acosh", "Add", "And", "ArgMax", "ArgMin", "Asin", "Asinh", "Atan", "Atanh",
@@ -48,7 +56,263 @@ STANDARD_ORT_CPP_OPS = {
 }
 
 
+def load_trained_model(
+    checkpoint_path: Optional[str],
+    num_classes: int = 3,
+    in_channels: int = 3,
+    map_location: str = "cpu",
+) -> Tuple[torch.nn.Module, Dict[str, Any], Path]:
+    """
+    Load trained PointNet++ weights. Random initialization is never allowed here.
+
+    Args:
+        checkpoint_path: Explicit checkpoint path, or None to use the repository's
+            trained checkpoint.
+        num_classes: Expected number of output classes.
+        in_channels: Expected number of input channels.
+        map_location: Torch device used while loading the checkpoint.
+
+    Returns:
+        model: PointNet2SemSeg with checkpoint weights loaded.
+        checkpoint: Raw checkpoint mapping, including stored evaluation metrics.
+        resolved_path: Absolute checkpoint path actually used.
+
+    Raises:
+        FileNotFoundError: If no checkpoint exists at the requested location.
+        ValueError: If the checkpoint is malformed or incompatible with the model.
+    """
+    candidate = (
+        Path(checkpoint_path).expanduser()
+        if checkpoint_path
+        else DEFAULT_CHECKPOINT_PATH
+    )
+    resolved_path = candidate.resolve()
+    if not resolved_path.is_file():
+        requested = checkpoint_path if checkpoint_path else str(DEFAULT_CHECKPOINT_PATH)
+        raise FileNotFoundError(
+            "A trained PyTorch checkpoint is required for ONNX export. "
+            f"Checkpoint not found: {requested}. "
+            "Refusing to export randomly initialized weights."
+        )
+
+    try:
+        checkpoint = torch.load(resolved_path, map_location=map_location)
+    except Exception as exc:
+        raise ValueError(
+            f"Unable to load trained checkpoint: {resolved_path}: {exc}"
+        ) from exc
+
+    if not isinstance(checkpoint, dict):
+        raise ValueError(
+            f"Checkpoint is not a checkpoint mapping: {resolved_path}. "
+            "Refusing to export randomly initialized weights."
+        )
+    state_dict = (
+        checkpoint["model_state_dict"]
+        if "model_state_dict" in checkpoint
+        else checkpoint
+    )
+    if not isinstance(state_dict, dict) or not state_dict:
+        raise ValueError(
+            f"Checkpoint contains no usable model_state_dict: {resolved_path}."
+        )
+
+    model = PointNet2SemSeg(num_classes=num_classes, in_channels=in_channels)
+    try:
+        load_result = model.load_state_dict(state_dict, strict=True)
+    except RuntimeError as exc:
+        raise ValueError(
+            f"Checkpoint weights are incompatible with "
+            f"PointNet2SemSeg(num_classes={num_classes}, in_channels={in_channels}): "
+            f"{resolved_path}: {exc}"
+        ) from exc
+    if load_result.missing_keys or load_result.unexpected_keys:
+        raise ValueError(
+            "Checkpoint did not load exactly. "
+            f"Missing keys: {load_result.missing_keys}. "
+            f"Unexpected keys: {load_result.unexpected_keys}. "
+            f"Checkpoint: {resolved_path}."
+        )
+
+    print(f"[Checkpoint] Loaded trained weights from {resolved_path}.")
+    return model, checkpoint, resolved_path
+
+
+def count_model_parameters(model: torch.nn.Module) -> int:
+    """Return the exact number of parameters in a PyTorch module."""
+    return int(sum(parameter.numel() for parameter in model.parameters()))
+
+
+def describe_onnx_contract(onnx_path: str) -> Dict[str, Any]:
+    """
+    Read the ONNX graph itself and report its deployable I/O contract.
+
+    This prevents hand-written metadata from drifting away from tensor names,
+    dynamic axes, channel count, class count, opset, or producer information.
+    """
+    model = onnx.load(onnx_path)
+    onnx.checker.check_model(model)
+
+    def shape_of(value_info) -> List[Any]:
+        shape: List[Any] = []
+        tensor_type = value_info.type.tensor_type
+        if not tensor_type.HasField("shape"):
+            return shape
+        for dim in tensor_type.shape.dim:
+            if dim.HasField("dim_value"):
+                shape.append(int(dim.dim_value))
+            elif dim.dim_param:
+                shape.append(str(dim.dim_param))
+        return shape
+
+    if len(model.graph.input) != 1 or len(model.graph.output) != 1:
+        raise ValueError(
+            f"Expected exactly one ONNX input and one ONNX output, found "
+            f"{len(model.graph.input)} input(s) and {len(model.graph.output)} output(s): "
+            f"{onnx_path}."
+        )
+
+    opset_versions = sorted(
+        {opset.version for opset in model.opset_import if opset.domain in ("", "ai.onnx")}
+    )
+    if not opset_versions:
+        raise ValueError(f"ONNX model has no ai.onnx opset version: {onnx_path}.")
+
+    return {
+        "file_size_bytes": int(os.path.getsize(onnx_path)),
+        "input_tensor_name": str(model.graph.input[0].name),
+        "input_shape": shape_of(model.graph.input[0]),
+        "output_tensor_name": str(model.graph.output[0].name),
+        "output_shape": shape_of(model.graph.output[0]),
+        "opset_version": int(opset_versions[-1]),
+        "producer_name": str(model.producer_name or ""),
+        "producer_version": str(model.producer_version or ""),
+    }
+
+
+def extract_checkpoint_metrics(checkpoint: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract stored evaluation metrics from a checkpoint mapping.
+
+    The checkpoint observed in this repository stores overall accuracy, mean IoU,
+    and per-class IoU/precision/recall. This function requires that evidence to
+    be present instead of substituting plausible-looking numbers.
+    """
+    metrics = checkpoint.get("metrics")
+    if not isinstance(metrics, dict) or not metrics:
+        raise ValueError(
+            "Checkpoint contains no stored evaluation metrics. "
+            "Model metadata cannot be regenerated without rerunning evaluation."
+        )
+
+    required = ("overall_accuracy", "mean_iou", "per_class_iou")
+    missing = [key for key in required if key not in metrics]
+    if missing:
+        raise ValueError(
+            f"Checkpoint metrics are incomplete; missing {missing}. "
+            "Model metadata cannot be regenerated without rerunning evaluation."
+        )
+
+    per_class_iou = metrics["per_class_iou"]
+    if not isinstance(per_class_iou, dict):
+        raise ValueError("Checkpoint per-class IoU is malformed.")
+    missing_classes = [name for name in CANONICAL_CLASS_NAMES if name not in per_class_iou]
+    if missing_classes:
+        raise ValueError(
+            f"Checkpoint metrics do not contain IoU for {missing_classes}."
+        )
+
+    return {
+        "overall_accuracy": float(metrics["overall_accuracy"]),
+        "mean_iou": float(metrics["mean_iou"]),
+        "per_class_iou": {
+            name: float(per_class_iou[name]) for name in CANONICAL_CLASS_NAMES
+        },
+        "per_class_precision": dict(metrics.get("per_class_precision", {})),
+        "per_class_recall": dict(metrics.get("per_class_recall", {})),
+        "best_miou": (
+            float(checkpoint["best_miou"])
+            if "best_miou" in checkpoint
+            else float(metrics["mean_iou"])
+        ),
+    }
+
+
+def save_model_metadata(
+    output_metadata_path: str,
+    checkpoint_path: Path,
+    checkpoint: Dict[str, Any],
+    onnx_path: str,
+    num_parameters: int,
+) -> str:
+    """
+    Regenerate models/metadata/model_metadata.json from measured artifacts.
+
+    Every reported number comes from the loaded checkpoint or the exported ONNX
+    file. Nothing in this file is hand-copied from another report.
+    """
+    contract = describe_onnx_contract(onnx_path)
+    metrics = extract_checkpoint_metrics(checkpoint)
+    input_shape = contract["input_shape"]
+    output_shape = contract["output_shape"]
+    if len(input_shape) != 3 or len(output_shape) != 3:
+        raise ValueError(
+            f"Unexpected point-cloud tensor rank in {onnx_path}: "
+            f"input={input_shape}, output={output_shape}."
+        )
+
+    metadata = {
+        "model_name": "PointNet2_SemSeg",
+        "task": "Semantic Segmentation for 2.5D Variable-Resolution LiDAR Mapping",
+        "classes": {
+            "0": CANONICAL_CLASS_NAMES[0],
+            "1": CANONICAL_CLASS_NAMES[1],
+            "2": CANONICAL_CLASS_NAMES[2],
+        },
+        "input_shape": input_shape,
+        "input_tensor_name": contract["input_tensor_name"],
+        "output_shape": output_shape,
+        "output_tensor_name": contract["output_tensor_name"],
+        "dynamic_axes": {"batch": 0, "num_points": 1},
+        "num_parameters": int(num_parameters),
+        "file_size_bytes": contract["file_size_bytes"],
+        "accuracy_test_overall": metrics["overall_accuracy"] / 100.0,
+        "mean_iou": metrics["mean_iou"] / 100.0,
+        "class_iou": {
+            name: metrics["per_class_iou"][name] / 100.0
+            for name in CANONICAL_CLASS_NAMES
+        },
+        "checkpoint_metrics_percent": metrics,
+        "deployment_target": "ONNX Runtime C++17",
+        "training_framework": "PyTorch (Offline Only)",
+        "training_torch_version": "not recorded in checkpoint",
+        "export_producer": {
+            "name": contract["producer_name"],
+            "version": contract["producer_version"],
+        },
+        "export_environment": {
+            "torch": torch.__version__,
+            "onnx": onnx.__version__,
+            "onnxruntime": ort.__version__,
+        },
+        "provenance": {
+            "checkpoint_file": str(checkpoint_path),
+            "onnx_file": str(Path(onnx_path).resolve()),
+            "generator": "python/conversion/export_onnx.py:save_model_metadata",
+            "regenerated_from_checkpoint_metrics": True,
+        },
+    }
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_metadata_path)), exist_ok=True)
+    with open(output_metadata_path, "w", encoding="utf-8") as metadata_file:
+        json.dump(metadata, metadata_file, indent=2)
+        metadata_file.write("\n")
+    print(f"[Metadata] Regenerated model metadata from measured artifacts: {output_metadata_path}")
+    return output_metadata_path
+
+
 def export_model_to_onnx(
+
     model: torch.nn.Module,
     output_path: str,
     nominal_n: int = 4096,
@@ -118,13 +382,12 @@ def validate_onnx_export(
     verbose: bool = True
 ) -> Dict[str, Any]:
     """
-    Validates exported ONNX model with ONNX Runtime:
-    - Verifies loading
-    - Tests nominal point count
-    - Tests varying point counts (dynamic axis verification)
-    - Verifies output shape and numeric equivalence to PyTorch
-    - Verifies all ops are supported standard ONNX Runtime C++ operators
+    Validates an exported ONNX model against the supplied PyTorch module.
 
+    The caller must supply a model whose trained weights have already loaded
+    successfully. This function cannot detect random initialization on its own;
+    the command-line entry point refuses to reach this validation step unless
+    checkpoint loading succeeded exactly.
     Returns:
         results: Dictionary containing test outcomes and op inspection
     """
@@ -200,6 +463,10 @@ def save_onnx_metadata(
 ):
     """
     Saves JSON metadata documenting the C++ runtime contract.
+
+    Existing historical training provenance is preserved when present. The
+    generator updates only the deployable contract and the checkpoint-derived
+    training_info; it never deletes unrelated provenance fields.
     """
     if class_mapping is None:
         class_mapping = {
@@ -207,6 +474,19 @@ def save_onnx_metadata(
             "static_obstacle": 1,
             "dynamic_object": 2
         }
+
+    existing_metadata: Dict[str, Any] = {}
+    if os.path.exists(output_metadata_path):
+        try:
+            with open(output_metadata_path, "r", encoding="utf-8") as existing_file:
+                loaded_metadata = json.load(existing_file)
+            if isinstance(loaded_metadata, dict):
+                existing_metadata = loaded_metadata
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                f"Existing ONNX sidecar is unreadable, refusing to overwrite it: "
+                f"{output_metadata_path}: {exc}"
+            ) from exc
 
     metadata = {
         "model_file": onnx_filename,
@@ -234,30 +514,52 @@ def save_onnx_metadata(
     }
     if training_info:
         metadata["training_info"] = training_info
+    if isinstance(existing_metadata.get("training_provenance"), dict):
+        metadata["training_provenance"] = existing_metadata["training_provenance"]
 
     os.makedirs(os.path.dirname(os.path.abspath(output_metadata_path)), exist_ok=True)
     with open(output_metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
+        f.write("\n")
     print(f"[Metadata] C++ runtime interface metadata saved to: {output_metadata_path}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Export PointNet++ to ONNX opset 17")
-    parser.add_argument("--checkpoint", type=str, default=None, help="Path to PyTorch checkpoint (.pth)")
+    parser = argparse.ArgumentParser(description="Export trained PointNet++ to ONNX opset 17")
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=str(DEFAULT_CHECKPOINT_PATH),
+        help="Path to trained PyTorch checkpoint (.pth). This is required.",
+    )
     parser.add_argument("--output", type=str, default="models/onnx/pointnet2_semseg.onnx", help="Output .onnx path")
+    parser.add_argument(
+        "--metadata",
+        type=str,
+        default=str(DEFAULT_MODEL_METADATA_PATH),
+        help="Regenerated model-metadata JSON path.",
+    )
     parser.add_argument("--opset", type=int, default=17, help="ONNX opset version (default: 17)")
     parser.add_argument("--channels", type=int, default=3, help="Input channels (default: 3 for xyz)")
     parser.add_argument("--classes", type=int, default=3, help="Number of classes (default: 3)")
     args = parser.parse_args()
 
-    model = PointNet2SemSeg(num_classes=args.classes, in_channels=args.channels)
-    if args.checkpoint and os.path.exists(args.checkpoint):
-        print(f"Loading checkpoint weights from {args.checkpoint}...")
-        ckpt = torch.load(args.checkpoint, map_location="cpu")
-        state_dict = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
-        model.load_state_dict(state_dict)
-    else:
-        print("Instantiating model with random weights (Phase 1 Risk Gate)...")
+    try:
+        model, checkpoint, checkpoint_path = load_trained_model(
+            args.checkpoint,
+            num_classes=args.classes,
+            in_channels=args.channels,
+        )
+        checkpoint_metrics = extract_checkpoint_metrics(checkpoint)
+        num_parameters = count_model_parameters(model)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[Checkpoint] ERROR: {exc}", file=sys.stderr)
+        print(
+            "[Checkpoint] Export aborted before tracing or validation; "
+            "no random-weight ONNX artifact was created.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     export_path = export_model_to_onnx(
         model,
@@ -274,22 +576,35 @@ if __name__ == "__main__":
         in_channels=args.channels
     )
 
+    if not val_results["all_passed"]:
+        print("\n==========================================")
+        print(">>> ONNX RISK GATE VALIDATION: FAILED! <<<")
+        print("Metadata was not regenerated because validation failed.")
+        print("==========================================")
+        sys.exit(1)
+
     meta_path = str(Path(export_path).with_suffix(".json"))
     save_onnx_metadata(
         meta_path,
         Path(export_path).name,
         opset_version=args.opset,
         in_channels=args.channels,
-        num_classes=args.classes
+        num_classes=args.classes,
+        training_info={
+            "checkpoint_file": str(checkpoint_path),
+            "checkpoint_metrics_percent": checkpoint_metrics,
+            "num_parameters": num_parameters,
+        },
+    )
+    save_model_metadata(
+        args.metadata,
+        checkpoint_path,
+        checkpoint,
+        export_path,
+        num_parameters,
     )
 
-    if val_results["all_passed"]:
-        print("\n==========================================")
-        print(">>> ONNX RISK GATE VALIDATION: PASSED! <<<")
-        print("==========================================")
-        sys.exit(0)
-    else:
-        print("\n==========================================")
-        print(">>> ONNX RISK GATE VALIDATION: FAILED! <<<")
-        print("==========================================")
-        sys.exit(1)
+    print("\n==========================================")
+    print(">>> ONNX RISK GATE VALIDATION: PASSED! <<<")
+    print("==========================================")
+    sys.exit(0)

@@ -2,6 +2,65 @@
   "model_file": "pointnet2_semseg.onnx",
   "architecture": "PointNet++ (SSG Semantic Segmentation)",
   "opset_version": 17,
+  "input_tensor": {
+    "name": "points",
+    "shape": [
+      "batch",
+      "num_points",
+      3
+    ],
+    "data_type": "float32",
+    "channel_order": [
+      "x",
+      "y",
+      "z"
+    ],
+    "memory_layout": "row-major flat array of N * channels floats (zero-copy from Point struct)"
+  },
+  "output_tensor": {
+    "name": "logits",
+    "shape": [
+      "batch",
+      "num_points",
+      3
+    ],
+    "data_type": "float32",
+    "interpretation": "Per-point raw logits across class dimension"
+  },
+  "classes": {
+    "terrain": 0,
+    "static_obstacle": 1,
+    "dynamic_object": 2
+  },
+  "c++_interface_notes": [
+    "Input points tensor can have arbitrary point count N >= 512 (dynamic axis).",
+    "Output logits can be mapped to predicted class via std::max_element / argmax along dim 2.",
+    "No custom ONNX Runtime operator registration is required."
+  ],
+  "training_info": {
+    "checkpoint_file": "D:\\053\\models\\checkpoints\\pointnet2_trained_best.pth",
+    "checkpoint_metrics_percent": {
+      "overall_accuracy": 87.79,
+      "mean_iou": 69.88,
+      "per_class_iou": {
+        "terrain": 84.32,
+        "static_obstacle": 78.48,
+        "dynamic_object": 46.85
+      },
+      "per_class_precision": {
+        "terrain": 91.38,
+        "static_obstacle": 88.19,
+        "dynamic_object": 63.18
+      },
+      "per_class_recall": {
+        "terrain": 91.61,
+        "static_obstacle": 87.7,
+        "dynamic_object": 64.44
+      },
+      "best_miou": 69.88
+    },
+    "num_parameters": 265571
+  },
   "training_provenance": {
     "dataset": "SemanticKITTI",
     "sequences_used": [
@@ -38,32 +97,5 @@
         "dynamic_object": 64.44
       }
     }
-  },
-  "input_tensor": {
-    "name": "points",
-    "shape": [
-      "batch",
-      "num_points",
-      3
-    ],
-    "channel_order": [
-      "x",
-      "y",
-      "z"
-    ],
-    "memory_layout": "flat row-major N*3 floats"
-  },
-  "output_tensor": {
-    "name": "logits",
-    "shape": [
-      "batch",
-      "num_points",
-      3
-    ]
-  },
-  "classes": {
-    "terrain": 0,
-    "static_obstacle": 1,
-    "dynamic_object": 2
   }
 }

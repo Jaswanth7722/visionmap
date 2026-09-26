@@ -9,8 +9,8 @@ model:
 inference:
   subsample_points: 4096
   batch_size: 1
-  input_channels: 4  # (x, y, z, intensity)
-  num_classes: 3     # 0: terrain, 1: static obstacle, 2: dynamic obstacle
+  input_channels: 3  # (x, y, z), matching the deployed ONNX tensor
+  num_classes: 3     # 0: terrain, 1: static obstacle, 2: dynamic object
   onnx_intra_op_threads: 4
   onnx_inter_op_threads: 1
   execution_provider: "CPUExecutionProvider"
@@ -19,4 +19,4 @@ inference:
 classes:
   0: "terrain"
   1: "static_obstacle"
-  2: "dynamic_obstacle"
+  2: "dynamic_object"
