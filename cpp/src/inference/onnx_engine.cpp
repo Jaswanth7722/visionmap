@@ -17,14 +17,18 @@ namespace {
 // run (model not loaded) or a chunk fails. Every use is counted by the
 // caller in fallbackPoints(); this function never runs silently.
 void tagGeometricFallback(Point3D& pt) {
-    if (pt.z < -1.2f) {
+    float r = std::hypot(pt.x, pt.y);
+    // Ground plane in LiDAR coordinates is at z ~ -1.6m (anything below -1.30m is terrain)
+    if (pt.z < -1.30f) {
         pt.semantic_class = SemanticClass::TERRAIN;
-    } else if (std::hypot(pt.x, pt.y) < 25.0f && pt.z > -0.8f && pt.z < 1.8f) {
+    } else if (std::abs(pt.y) <= 4.2f && pt.z >= -1.25f && pt.z <= 2.2f && r >= 2.5f && r <= 65.0f) {
+        // Dynamic vehicles in roadway corridors (front, rear, adjacent lanes)
         pt.semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
     } else {
+        // Static roadside structures (poles, barriers, curbs, trees)
         pt.semantic_class = SemanticClass::STATIC_OBSTACLE;
     }
-    pt.confidence = 0.85f;
+    pt.confidence = 0.88f;
 }
 
 void tagFromLogits(Point3D& pt, const float* logits) {
@@ -48,6 +52,12 @@ void tagFromLogits(Point3D& pt, const float* logits) {
     } else if (l2 > l0 && l2 > l1) {
         pred_class = SemanticClass::DYNAMIC_OBSTACLE;
         conf = e2 / sum;
+    }
+
+    // Physical invariant: LiDAR sensor is at +1.60m elevation; road is at -1.60m.
+    // Points below -1.30m are strictly terrain (road surface) and cannot be vehicles.
+    if (pt.z < -1.30f) {
+        pred_class = SemanticClass::TERRAIN;
     }
 
     pt.semantic_class = pred_class;
@@ -124,7 +134,18 @@ double OnnxEngine::infer(PointCloud& cloud) {
                 input_tensor_values.push_back(pt.y);
                 input_tensor_values.push_back(pt.z);
             }
-            std::vector<int64_t> input_shape = {1, static_cast<int64_t>(n), 3};
+            // PointNet++ Set Abstraction layer 1 has TopK(k=32). If n < 32, pad points with duplicates
+            size_t tensor_n = n;
+            if (tensor_n < 32 && tensor_n > 0) {
+                while (tensor_n < 32) {
+                    const auto& pt = cloud[begin + (tensor_n % n)];
+                    input_tensor_values.push_back(pt.x);
+                    input_tensor_values.push_back(pt.y);
+                    input_tensor_values.push_back(pt.z);
+                    tensor_n++;
+                }
+            }
+            std::vector<int64_t> input_shape = {1, static_cast<int64_t>(tensor_n), 3};
 
             try {
                 Ort::Value input_tensor = Ort::Value::CreateTensor<float>(

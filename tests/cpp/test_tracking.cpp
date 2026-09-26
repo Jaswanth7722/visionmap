@@ -86,7 +86,7 @@ int main() {
     }
 
     // H1-width-gate: a 12 m wide (laterally) flat band — the shape of a
-    // mislabeled monocular-depth image row, which spans the image width —
+    // mis-segmented LiDAR plane erroneously labeled DYNAMIC_OBSTACLE —
     // must not become a track, while the 4.5 m long vehicle above still does.
     {
         ps26053::KalmanTracker bt;

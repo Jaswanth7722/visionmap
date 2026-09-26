@@ -34,13 +34,13 @@ struct TrackerConfig {
     float cluster_radius{0.65f};
     // Maximum lateral (Y) extent of one dynamic object in metres.
     // Components wider than this are rejected as background sheets, not
-    // objects: monocular-projected frames quantize depth per image row, so a
-    // mislabeled row becomes a band spanning the full image width while
-    // staying thin in depth. Lateral extent is the right axis because road
-    // vehicles are narrow across the road (<3 m) and long along it — a
-    // 12 m bus is 12 m in X but ~2.5 m in Y and passes. Trade-off, stated
-    // openly: a laterally-spread group (e.g. a crowd shoulder-to-shoulder
-    // wider than this) is rejected too. 0 disables.
+    // discrete objects. A mis-segmented LiDAR plane (e.g. a flat ground
+    // return labeled DYNAMIC by inference) typically spans the full scan
+    // width while staying thin in depth — the lateral extent gate rejects it.
+    // Road vehicles are narrow across the road (<3 m) and long along it;
+    // a 12 m bus is ~2.5 m in Y and passes. Trade-off, stated openly: a
+    // laterally-spread group (e.g. a crowd shoulder-to-shoulder wider than
+    // this) is rejected too. 0 disables.
     float max_cluster_width{6.0f};
     float nominal_dt{0.1f};
     float process_noise_pos{0.1f};
