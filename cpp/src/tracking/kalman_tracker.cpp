@@ -68,8 +68,8 @@ void SingleKalmanFilter::update(const Eigen::Vector2f& z) {
 
 KalmanTracker::KalmanTracker() {}
 
-std::vector<BoundingBox2D> KalmanTracker::clusterDynamicPoints(const PointCloud& dynamic_cloud) const {
-    std::vector<BoundingBox2D> clusters;
+std::vector<DynamicCluster> KalmanTracker::clusterDynamicPoints(const PointCloud& dynamic_cloud) const {
+    std::vector<DynamicCluster> clusters;
     std::vector<const Point3D*> pts;
     pts.reserve(dynamic_cloud.size());
     for (const auto& pt : dynamic_cloud) {
@@ -135,12 +135,14 @@ std::vector<BoundingBox2D> KalmanTracker::clusterDynamicPoints(const PointCloud&
 
     std::unordered_map<size_t, BoundingBox2D> boxes;
     std::unordered_map<size_t, size_t> counts;
+    std::unordered_map<size_t, double> sum_z;
     for (size_t i = 0; i < pts.size(); ++i) {
         size_t root = find(i);
         auto it = boxes.find(root);
         if (it == boxes.end()) {
             boxes.emplace(root, BoundingBox2D{pts[i]->x, pts[i]->x, pts[i]->y, pts[i]->y});
             counts.emplace(root, 1);
+            sum_z.emplace(root, pts[i]->z);
         } else {
             BoundingBox2D& bbox = it->second;
             bbox.min_x = std::min(bbox.min_x, pts[i]->x);
@@ -148,26 +150,31 @@ std::vector<BoundingBox2D> KalmanTracker::clusterDynamicPoints(const PointCloud&
             bbox.min_y = std::min(bbox.min_y, pts[i]->y);
             bbox.max_y = std::max(bbox.max_y, pts[i]->y);
             ++counts[root];
+            sum_z[root] += pts[i]->z;
         }
     }
 
     for (const auto& [root, bbox] : boxes) {
         if (counts[root] >= kMinClusterPoints) {
-            clusters.push_back(bbox);
+            DynamicCluster cluster;
+            cluster.bbox = bbox;
+            cluster.mean_z = static_cast<float>(sum_z[root] / static_cast<double>(counts[root]));
+            cluster.point_count = counts[root];
+            clusters.push_back(cluster);
         }
     }
 
     // Deterministic cluster order (unordered_map iteration is not), so track
     // IDs are reproducible for identical inputs.
-    std::sort(clusters.begin(), clusters.end(), [](const BoundingBox2D& a, const BoundingBox2D& b) {
-        if (a.min_x != b.min_x) return a.min_x < b.min_x;
-        return a.min_y < b.min_y;
+    std::sort(clusters.begin(), clusters.end(), [](const DynamicCluster& a, const DynamicCluster& b) {
+        if (a.bbox.min_x != b.bbox.min_x) return a.bbox.min_x < b.bbox.min_x;
+        return a.bbox.min_y < b.bbox.min_y;
     });
 
     return clusters;
 }
 
-void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& clusters, double timestamp) {
+void KalmanTracker::associateAndFilter(const std::vector<DynamicCluster>& clusters, double timestamp) {
     // 1. Predict existing tracks using the REAL inter-frame interval (H1).
     // Non-positive intervals (repeated timestamps) predict with dt = 0, i.e.
     // no motion assumed; large gaps are clamped to 1 s to keep the
@@ -192,7 +199,7 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
 
         for (size_t c = 0; c < clusters.size(); ++c) {
             if (cluster_matched[c]) continue;
-            Eigen::Vector2f c_pos(clusters[c].centerX(), clusters[c].centerY());
+            Eigen::Vector2f c_pos(clusters[c].bbox.centerX(), clusters[c].bbox.centerY());
             Eigen::Vector2f pred_pos(filters_[t].x(0), filters_[t].x(1));
             float d = (c_pos - pred_pos).norm();
             if (d < min_dist) {
@@ -204,12 +211,13 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
         if (best_c >= 0) {
             cluster_matched[best_c] = true;
             track_matched[t] = true;
-            Eigen::Vector2f meas(clusters[best_c].centerX(), clusters[best_c].centerY());
+            Eigen::Vector2f meas(clusters[best_c].bbox.centerX(), clusters[best_c].bbox.centerY());
             filters_[t].update(meas);
 
             tracks_[t].position = Eigen::Vector2f(filters_[t].x(0), filters_[t].x(1));
+            tracks_[t].position_z = clusters[best_c].mean_z;
             tracks_[t].velocity = Eigen::Vector2f(filters_[t].x(2), filters_[t].x(3));
-            tracks_[t].bbox = clusters[best_c];
+            tracks_[t].bbox = clusters[best_c].bbox;
             tracks_[t].hits++;
             tracks_[t].misses = 0;
             // Confidence is computed from association history (H1), never
@@ -226,7 +234,7 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
     // 3. Spawn new tracks for unmatched clusters
     for (size_t c = 0; c < clusters.size(); ++c) {
         if (!cluster_matched[c]) {
-            Eigen::Vector2f pos(clusters[c].centerX(), clusters[c].centerY());
+            Eigen::Vector2f pos(clusters[c].bbox.centerX(), clusters[c].bbox.centerY());
             SingleKalmanFilter new_kf(pos, dt, config_.process_noise_pos,
                                       config_.process_noise_vel,
                                       config_.measurement_noise_pos);
@@ -235,8 +243,9 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
             TrackedObject track;
             track.id = next_track_id_++;
             track.position = pos;
+            track.position_z = clusters[c].mean_z;
             track.velocity = Eigen::Vector2f(0.0f, 0.0f);
-            track.bbox = clusters[c];
+            track.bbox = clusters[c].bbox;
             track.semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
             track.hits = 1;
             track.misses = 0;

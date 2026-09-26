@@ -38,6 +38,15 @@ struct TrackerConfig {
     float measurement_noise_pos{0.2f};
 };
 
+/**
+ * @brief One 3D-connected dynamic cluster: 2D footprint plus mean height.
+ */
+struct DynamicCluster {
+    BoundingBox2D bbox;
+    float mean_z{0.0f};
+    size_t point_count{0};
+};
+
 class KalmanTracker {
 public:
     KalmanTracker();
@@ -69,8 +78,8 @@ private:
         return (c > 0.95f) ? 0.95f : c;
     }
 
-    std::vector<BoundingBox2D> clusterDynamicPoints(const PointCloud& dynamic_cloud) const;
-    void associateAndFilter(const std::vector<BoundingBox2D>& clusters, double timestamp);
+    std::vector<DynamicCluster> clusterDynamicPoints(const PointCloud& dynamic_cloud) const;
+    void associateAndFilter(const std::vector<DynamicCluster>& clusters, double timestamp);
 };
 
 } // namespace ps26053

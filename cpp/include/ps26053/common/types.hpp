@@ -56,6 +56,7 @@ struct BoundingBox2D {
 struct TrackedObject {
     int32_t id{-1};
     Eigen::Vector2f position{0.0f, 0.0f};
+    float position_z{0.0f}; ///< Mean cluster height (H4: measured, never hardcoded)
     Eigen::Vector2f velocity{0.0f, 0.0f};
     SemanticClass semantic_class{SemanticClass::DYNAMIC_OBSTACLE};
     float confidence{0.0f};

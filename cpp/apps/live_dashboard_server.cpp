@@ -21,6 +21,7 @@
 #include <atomic>
 #include <chrono>
 #include <iomanip>
+#include <climits>
 #include <cmath>
 
 namespace {
@@ -427,6 +428,9 @@ private:
         ss << "  },\n";
 
         // 1. Sample processed and semantically segmented point cloud from PointNet++
+        // Per-point schema: [x, y, z, intensity, class_id, confidence].
+        // (Per-point timestamps do not exist in Point3D and are omitted
+        // rather than fabricated.)
         const auto& cloud_to_send = pipeline_->getProcessedCloud().empty() ? raw_scan_ : pipeline_->getProcessedCloud();
         ss << "  \"points\": [\n";
         size_t step = std::max<size_t>(1, cloud_to_send.size() / 12000);
@@ -436,11 +440,11 @@ private:
             if (!first_pt) ss << ",\n";
             first_pt = false;
             int sem_cls = static_cast<int>(pt.semantic_class);
-            ss << "    [" << pt.x << "," << pt.y << "," << pt.z << "," << pt.intensity << "," << sem_cls << "]";
+            ss << "    [" << pt.x << "," << pt.y << "," << pt.z << "," << pt.intensity << "," << sem_cls << "," << pt.confidence << "]";
         }
         ss << "\n  ],\n";
 
-        // 2. Active 2.5D cells
+        // 2. Active 2.5D cells (full per-cell schema: no silent omissions)
         ss << "  \"cells\": [\n";
         auto cells = pipeline_->getGrid().getAllCells();
         bool first_cell = true;
@@ -452,13 +456,17 @@ private:
             first_cell = false;
             float cx = (c.bounds.min_x + c.bounds.max_x) * 0.5f;
             float cy = (c.bounds.min_y + c.bounds.max_y) * 0.5f;
-            ss << "    {\"x\":" << cx << ",\"y\":" << cy << ",\"res\":" << c.resolution 
-               << ",\"elev\":" << c.elevation << ",\"occ\":" << c.occupancy 
-               << ",\"class\":" << static_cast<int>(c.semantic_class) << "}";
+            ss << "    {\"x\":" << cx << ",\"y\":" << cy << ",\"res\":" << c.resolution
+               << ",\"elev\":" << c.elevation << ",\"occ\":" << c.occupancy
+               << ",\"class\":" << static_cast<int>(c.semantic_class)
+               << ",\"conf\":" << c.semantic_confidence
+               << ",\"object_id\":" << c.object_id
+               << ",\"vx\":" << c.velocity_x << ",\"vy\":" << c.velocity_y << "}";
         }
         ss << "\n  ],\n";
 
-        // 3. Dynamic tracked objects
+        // 3. Dynamic tracked objects (z and confidence measured, sizes from
+        // the 3D-connected cluster footprint)
         ss << "  \"tracks\": [\n";
         const auto& tracks = pipeline_->getTracks();
         bool first_trk = true;
@@ -467,8 +475,9 @@ private:
             first_trk = false;
             std::string cls_str = (tr.semantic_class == ps26053::SemanticClass::DYNAMIC_OBSTACLE) ? "Vehicle" : "Obstacle";
             ss << "    {\"id\":" << tr.id << ",\"class\":\"" << cls_str << "\",\"x\":" << tr.position.x()
-               << ",\"y\":" << tr.position.y() << ",\"z\": -0.8"
+               << ",\"y\":" << tr.position.y() << ",\"z\":" << tr.position_z
                << ",\"vx\":" << tr.velocity.x() << ",\"vy\":" << tr.velocity.y()
+               << ",\"confidence\":" << tr.confidence
                << ",\"length\":" << tr.bbox.width() << ",\"width\":" << tr.bbox.height() << "}";
         }
         ss << "\n  ]\n";
@@ -485,16 +494,23 @@ private:
             return;
         }
 
-        camera_active_ = true;
-        camera_frame_count_++;
-        last_cam_time_ = std::chrono::steady_clock::now();
+        // H5: this route runs on detached worker threads alongside the LiDAR
+        // routes; all shared timing/counter/metrics state is mutex-guarded.
+        size_t active_cells = 0;
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            camera_active_ = true;
+            camera_frame_count_++;
+            last_cam_time_ = std::chrono::steady_clock::now();
+            active_cells = latest_metrics_.active_cells;
+        }
 
         std::ostringstream ss;
         ss << "{\n";
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"camera_active\": true,\n";
         ss << "  \"camera_frame_id\": " << camera_frame_count_.load() << ",\n";
-        ss << "  \"active_cells\": " << latest_metrics_.active_cells << "\n";
+        ss << "  \"active_cells\": " << active_cells << "\n";
         ss << "}";
 
         sendResponse(sock, 200, "application/json", ss.str());
@@ -535,8 +551,21 @@ private:
         ss << "Content-Length: " << body.size() << "\r\n\r\n";
         ss << body;
 
+        // H6: a single send() may write fewer bytes than requested (large
+        // scan payloads). Loop until everything is written and report a
+        // shortfall loudly instead of silently truncating the JSON.
         std::string resp = ss.str();
-        send(sock, resp.c_str(), static_cast<int>(resp.size()), 0);
+        size_t sent_total = 0;
+        while (sent_total < resp.size()) {
+            int chunk = static_cast<int>(std::min<size_t>(resp.size() - sent_total, INT_MAX));
+            int n = send(sock, resp.c_str() + sent_total, chunk, 0);
+            if (n <= 0) {
+                std::cerr << "[Server] send() failed after " << sent_total << " of "
+                          << resp.size() << " bytes (WSA " << WSAGetLastError() << ").\n";
+                return;
+            }
+            sent_total += static_cast<size_t>(n);
+        }
     }
 };
 
