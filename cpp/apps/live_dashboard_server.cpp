@@ -15,6 +15,7 @@
 #include <sstream>
 #include <vector>
 #include <string>
+#include <set>
 #include <thread>
 #include <mutex>
 #include <memory>
@@ -23,6 +24,7 @@
 #include <iomanip>
 #include <climits>
 #include <cmath>
+#include <filesystem>
 
 namespace {
 
@@ -58,8 +60,12 @@ std::string readFileContents(const std::string& path) {
 
 class LiveDashboardServer {
 public:
-    LiveDashboardServer(int port = 8080, const std::string& scan_arg = "data/raw")
-        : port_(port), scan_arg_(scan_arg) {
+    LiveDashboardServer(int port = 8080, const std::string& scan_arg = "data/raw",
+                        bool watch_enabled = false, int watch_interval_sec = 5,
+                        bool loop_enabled = false)
+        : port_(port), scan_arg_(scan_arg), watch_enabled_(watch_enabled),
+          watch_interval_sec_(watch_interval_sec > 0 ? watch_interval_sec : 5),
+          loop_enabled_(loop_enabled) {
         pipeline_ = std::make_unique<ps26053::MappingPipeline>("models/onnx/pointnet2_semseg.onnx");
     }
 
@@ -85,6 +91,7 @@ public:
         // timestamps assume the nominal 10 Hz from config/lidar.yaml.
         seq_scans_ = ps26053::LidarIO::listSequenceScans(scan_arg_);
         if (seq_scans_.empty()) seq_scans_.push_back(scan_arg_);
+        for (const auto& p : seq_scans_) known_scans_.insert(p);
         std::cout << "[Dataset] " << seq_scans_.size() << " scan(s) from: " << scan_arg_ << " ...\n";
         seq_index_ = 0;
         if (processFrameAt(0)) {
@@ -140,6 +147,13 @@ public:
         std::cout << "  Camera: sensor frames accepted via POST /api/camera/upload\n";
         std::cout << "==============================================================\n";
 
+        if (watch_enabled_ || loop_enabled_) {
+            std::cout << "[Watch] Auto-ingest " << (watch_enabled_ ? "ON" : "off")
+                      << " (every " << watch_interval_sec_ << " s), loop "
+                      << (loop_enabled_ ? "ON (replays reported)" : "off") << ".\n";
+            startWatchThread();
+        }
+
         // Listen loop
         while (g_running) {
             fd_set read_fds;
@@ -183,6 +197,13 @@ private:
     std::vector<std::string> seq_scans_;
     size_t seq_index_{0};
     static constexpr double kFrameIntervalSec = 0.1; // nominal 10 Hz (lidar.yaml)
+    // Automation state for drop-in live capture (see startWatchThread).
+    bool watch_enabled_{false};
+    int watch_interval_sec_{5};
+    bool loop_enabled_{false};
+    size_t loop_wraps_{0};
+    double loop_time_offset_{0.0};
+    std::set<std::string> known_scans_;
 
     std::atomic<bool> camera_active_{false};
     std::atomic<int> camera_frame_count_{0};
@@ -563,7 +584,8 @@ private:
     }
 
     // Load and process one sequence frame (grid/tracker state persists).
-    // Must be called with mtx_ held.
+    // Timestamps advance monotonically even across loop replays, so decay
+    // and tracker dt never see time run backward. Must hold mtx_.
     bool processFrameAt(size_t index) {
         if (index >= seq_scans_.size()) return false;
         if (!ps26053::LidarIO::loadBinScan(seq_scans_[index], raw_scan_)) {
@@ -572,9 +594,57 @@ private:
         }
         seq_index_ = index;
         latest_metrics_ = pipeline_->processFrame(
-            raw_scan_, index * kFrameIntervalSec, static_cast<int>(index));
+            raw_scan_, loop_time_offset_ + index * kFrameIntervalSec, static_cast<int>(index));
         scan_processed_ = true;
         return true;
+    }
+
+    // Drop-in live capture: a background thread polls the scan directory for
+    // new .bin files (e.g. written by a LiDAR logger on the vehicle) and
+    // processes each exactly once, in sorted order. With --loop, a static
+    // directory replays from frame 0 instead of stalling — reported as
+    // replay, never as live data.
+    void startWatchThread() {
+        std::error_code ec;
+        if (!std::filesystem::is_directory(scan_arg_, ec)) {
+            if (watch_enabled_) {
+                std::cerr << "[Watch] Not a directory, watch disabled: " << scan_arg_ << "\n";
+                watch_enabled_ = false;
+            }
+            if (loop_enabled_ && seq_scans_.size() <= 1) {
+                std::cerr << "[Watch] Loop needs a sequence directory; disabled.\n";
+                loop_enabled_ = false;
+            }
+            return;
+        }
+        std::thread([this]() {
+            while (g_running) {
+                std::this_thread::sleep_for(std::chrono::seconds(watch_interval_sec_));
+                std::lock_guard<std::mutex> lock(mtx_);
+                if (!g_running) break;
+                auto current = ps26053::LidarIO::listSequenceScans(scan_arg_);
+                bool advanced = false;
+                for (const auto& p : current) {
+                    if (known_scans_.count(p)) continue;
+                    seq_scans_.push_back(p);
+                    known_scans_.insert(p);
+                    if (processFrameAt(seq_scans_.size() - 1)) {
+                        std::cout << "[Watch] Auto-ingested frame " << (seq_scans_.size() - 1)
+                                  << ": " << p << "\n";
+                        advanced = true;
+                    }
+                }
+                if (!advanced && loop_enabled_ && !seq_scans_.empty() &&
+                    seq_index_ + 1 >= seq_scans_.size()) {
+                    loop_time_offset_ += seq_scans_.size() * kFrameIntervalSec;
+                    ++loop_wraps_;
+                    if (processFrameAt(0)) {
+                        std::cout << "[Watch] Looping sequence (replay #"
+                                  << loop_wraps_ << ", NOT live data).\n";
+                    }
+                }
+            }
+        }).detach();
     }
 
     void serveApiFrames(SOCKET sock) {
@@ -584,7 +654,12 @@ private:
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"frame_index\": " << seq_index_ << ",\n";
         ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
-        ss << "  \"current_scan\": \"" << (seq_scans_.empty() ? "" : seq_scans_[seq_index_]) << "\"\n";
+        ss << "  \"current_scan\": \"" << (seq_scans_.empty() ? "" : seq_scans_[seq_index_]) << "\",\n";
+        ss << "  \"watch_enabled\": " << (watch_enabled_ ? "true" : "false") << ",\n";
+        ss << "  \"watch_dir\": \"" << (watch_enabled_ ? scan_arg_ : "") << "\",\n";
+        ss << "  \"loop_enabled\": " << (loop_enabled_ ? "true" : "false") << ",\n";
+        ss << "  \"replay\": " << ((loop_enabled_ && loop_wraps_ > 0) ? "true" : "false") << ",\n";
+        ss << "  \"wraps\": " << loop_wraps_ << "\n";
         ss << "}";
         sendResponse(sock, 200, "application/json", ss.str());
     }
@@ -679,14 +754,26 @@ int main(int argc, char** argv) {
 
     int port = 8080;
     std::string scan_arg = "data/raw";
-    if (argc > 1) {
-        port = std::stoi(argv[1]);
-    }
-    if (argc > 2) {
-        scan_arg = argv[2];
+    bool watch = false;
+    int watch_interval = 5;
+    bool loop = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--watch" && i + 1 < argc) {
+            watch = true;
+            scan_arg = argv[++i];
+        } else if (arg == "--watch-interval" && i + 1 < argc) {
+            watch_interval = std::stoi(argv[++i]);
+        } else if (arg == "--loop") {
+            loop = true;
+        } else if (i == 1) {
+            port = std::stoi(arg);
+        } else if (i == 2) {
+            scan_arg = arg;
+        }
     }
 
-    LiveDashboardServer server(port, scan_arg);
+    LiveDashboardServer server(port, scan_arg, watch, watch_interval, loop);
     if (!server.start()) {
         std::cerr << "[Error] Failed to start live dashboard server.\n";
         return 1;

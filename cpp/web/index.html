@@ -937,6 +937,7 @@
         let cameraPoints = [];
         let gridCells = [];     // Active 2.5D cells from C++ Quadtree Grid
         let tracksData = [];    // Kalman tracked objects from C++ tracker
+        let lastFrameIdx = null; // last frame announced (stream visibility)
 
         // DOM elements
         const webcamVideo = document.getElementById('webcamVideo');
@@ -1230,6 +1231,15 @@
                 // instead of mysterious (advance via POST /api/frame/next).
                 if (m.frame_index !== undefined && m.frame_count) {
                     tagPointsCount.innerText += ` | frame ${m.frame_index + 1}/${m.frame_count}`;
+                    // Automation visibility: announce genuinely new frames so
+                    // a live stream is distinguishable from a static replay.
+                    if (m.frame_index !== lastFrameIdx) {
+                        if (lastFrameIdx !== null) {
+                            appendLog(`Advanced to frame ${m.frame_index + 1}/${m.frame_count} ` +
+                                `(${m.active_cells.toLocaleString()} cells).`, 'ok');
+                        }
+                        lastFrameIdx = m.frame_index;
+                    }
                 }
                 if (activeTab === 'BEV') render2DGrid();
                 appendLog(`C++ pipeline: ${m.input_points.toLocaleString()} pts → ${lidarPoints.length.toLocaleString()} classified | ${m.active_tracks} tracks | ${m.active_cells.toLocaleString()} cells | ${m.total_time_ms.toFixed(1)} ms` +

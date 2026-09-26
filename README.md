@@ -43,6 +43,12 @@ pytest tests/python/
 # or: python scripts\run_dashboard.py [port] [scan_file_or_sequence_dir]
 # then open http://localhost:8080
 # Sequence control at runtime: GET /api/frames, POST /api/frame/next, POST /api/reset
+#
+# Hands-free vehicle operation (one command builds if needed, waits for the
+# server, and opens the browser; a LiDAR logger dropping .bin files into the
+# watched directory is ingested automatically, no clicks):
+#   python scripts\run_dashboard.py 8080 C:\lidar_logs --watch C:\lidar_logs --watch-interval 3
+# Add --loop ONLY to replay a static directory (reported as replay, never live).
 ```
 
 ---
