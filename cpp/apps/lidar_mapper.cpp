@@ -47,6 +47,8 @@ int main(int argc, char** argv) {
     std::cout << "  Tracked Objects:    " << metrics.active_tracks << "\n";
     std::cout << "  Preprocessing:      " << metrics.preprocess_time_ms << " ms\n";
     std::cout << "  PointNet++ Infer:   " << metrics.inference_time_ms << " ms\n";
+    std::cout << "  Network Labels:     " << metrics.inference_network_points << " pts\n";
+    std::cout << "  Fallback Labels:    " << metrics.inference_fallback_points << " pts\n";
     std::cout << "  Tracking Update:    " << metrics.tracking_time_ms << " ms\n";
     std::cout << "  2.5D Map Update:    " << metrics.mapping_time_ms << " ms\n";
     std::cout << "  Total Latency:      " << metrics.total_time_ms << " ms\n";

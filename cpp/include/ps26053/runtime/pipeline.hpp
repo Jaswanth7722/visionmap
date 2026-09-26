@@ -20,6 +20,10 @@ struct FrameMetrics {
     size_t input_points{0};
     size_t active_cells{0};
     size_t active_tracks{0};
+    // Inference provenance: points labeled by the network vs the geometric
+    // fallback. Rendered by every reporting surface; never assumed.
+    size_t inference_network_points{0};
+    size_t inference_fallback_points{0};
     double fps{0.0};
 };
 

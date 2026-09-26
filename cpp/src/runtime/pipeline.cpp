@@ -41,6 +41,8 @@ FrameMetrics MappingPipeline::processFrame(const PointCloud& raw_scan, double ti
 
     // Stage 2: Semantic Perception (PointNet++ ONNX Runtime C++)
     metrics.inference_time_ms = inference_engine_.infer(processed_cloud_);
+    metrics.inference_network_points = inference_engine_.networkPoints();
+    metrics.inference_fallback_points = inference_engine_.fallbackPoints();
 
     // Stage 3: Dynamic Object Extraction & Kalman Tracking
     auto t2 = std::chrono::high_resolution_clock::now();

@@ -96,6 +96,16 @@ int main(int argc, char** argv) {
     std::cout << " Processing Latency (ms)    | " << std::setw(14) << uniform_latency_ms << " ms"
               << " | " << std::setw(14) << metrics.total_time_ms << " ms"
               << " | " << (metrics.fps) << " FPS\n";
+    {
+        size_t net = metrics.inference_network_points;
+        size_t fb = metrics.inference_fallback_points;
+        double total = static_cast<double>(net + fb);
+        double coverage = (total > 0.0) ? (100.0 * net / total) : 0.0;
+        std::cout << " Network-Labeled Points     | " << std::setw(17) << "n/a"
+                  << " | " << std::setw(11) << net << " (" << coverage << "%)\n";
+        std::cout << " Fallback-Labeled Points    | " << std::setw(17) << "n/a"
+                  << " | " << std::setw(17) << fb << "\n";
+    }
     std::cout << " Boundary Alignment Errors  | " << std::setw(17) << "n/a"
               << " | " << std::setw(17) << adaptive_boundary_errors
               << " | " << boundaryVerdict(adaptive_boundary_errors) << "\n";

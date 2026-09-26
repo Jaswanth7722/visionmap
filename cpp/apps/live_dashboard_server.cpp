@@ -416,6 +416,8 @@ private:
         ss << "    \"mapping_time_ms\": " << latest_metrics_.mapping_time_ms << ",\n";
         ss << "    \"total_time_ms\": " << latest_metrics_.total_time_ms << ",\n";
         ss << "    \"fps\": " << latest_metrics_.fps << ",\n";
+        ss << "    \"network_points\": " << latest_metrics_.inference_network_points << ",\n";
+        ss << "    \"fallback_points\": " << latest_metrics_.inference_fallback_points << ",\n";
         // Computed from the live grid on every request — never a constant.
         ss << "    \"boundary_errors\": " << pipeline_->getGrid().checkBoundaryAlignment().totalErrors() << ",\n";
         ss << "    \"ram_mb\": " << getProcessRamMb() << "\n";
