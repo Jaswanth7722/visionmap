@@ -1,7 +1,7 @@
 #include "ps26053/preprocessing/point_cloud_ops.hpp"
-#include <unordered_map>
+#include <algorithm>
 #include <cmath>
-#include <random>
+#include <vector>
 
 namespace ps26053 {
 
@@ -19,54 +19,76 @@ PointCloud PointCloudOps::filterROI(const PointCloud& input, const Preprocessing
     return filtered;
 }
 
-struct VoxelCentroid {
-    float sum_x{0.0f};
-    float sum_y{0.0f};
-    float sum_z{0.0f};
-    float sum_intensity{0.0f};
-    int count{0};
-    SemanticClass semantic_class{SemanticClass::UNKNOWN};
-    float confidence{0.0f};
-};
-
 PointCloud PointCloudOps::voxelGridDownsample(const PointCloud& input, float leaf_size) {
     if (leaf_size <= 0.0f || input.empty()) return input;
 
+    // Exact voxelization (C3): sort points by integer voxel coordinates and
+    // accumulate runs. The previous 32-bit XOR spatial hash merged voxels up
+    // to 24.9 m apart; sorting uses the full 64-bit coordinates, so distinct
+    // voxels can never collide. Output order is deterministic (sorted voxel
+    // order), which also removes hash-iteration nondeterminism downstream.
     float inv_leaf = 1.0f / leaf_size;
-    std::unordered_map<int64_t, VoxelCentroid> grid;
 
-    for (const auto& pt : input) {
-        int64_t vx = static_cast<int64_t>(std::floor(pt.x * inv_leaf));
-        int64_t vy = static_cast<int64_t>(std::floor(pt.y * inv_leaf));
-        int64_t vz = static_cast<int64_t>(std::floor(pt.z * inv_leaf));
-
-        // Spatial hash combination
-        int64_t key = (vx * 73856093) ^ (vy * 19349663) ^ (vz * 83492791);
-        auto& cell = grid[key];
-        cell.sum_x += pt.x;
-        cell.sum_y += pt.y;
-        cell.sum_z += pt.z;
-        cell.sum_intensity += pt.intensity;
-        if (pt.confidence > cell.confidence) {
-            cell.semantic_class = pt.semantic_class;
-            cell.confidence = pt.confidence;
+    struct VoxelRef {
+        int64_t vx, vy, vz;
+        size_t idx;
+        bool operator<(const VoxelRef& o) const {
+            if (vx != o.vx) return vx < o.vx;
+            if (vy != o.vy) return vy < o.vy;
+            if (vz != o.vz) return vz < o.vz;
+            return idx < o.idx;
         }
-        cell.count++;
+    };
+
+    std::vector<VoxelRef> order;
+    order.reserve(input.size());
+    for (size_t i = 0; i < input.size(); ++i) {
+        const auto& pt = input[i];
+        order.push_back({
+            static_cast<int64_t>(std::floor(pt.x * inv_leaf)),
+            static_cast<int64_t>(std::floor(pt.y * inv_leaf)),
+            static_cast<int64_t>(std::floor(pt.z * inv_leaf)),
+            i
+        });
     }
+    std::sort(order.begin(), order.end());
 
     PointCloud downsampled;
-    downsampled.reserve(grid.size());
+    downsampled.reserve(input.size());
 
-    for (const auto& [key, cell] : grid) {
-        float inv_c = 1.0f / cell.count;
+    size_t run_start = 0;
+    auto flush_run = [&](size_t begin, size_t end) {
+        float sum_x = 0.0f, sum_y = 0.0f, sum_z = 0.0f, sum_i = 0.0f;
+        SemanticClass cls = SemanticClass::UNKNOWN;
+        float conf = 0.0f;
+        for (size_t k = begin; k < end; ++k) {
+            const auto& pt = input[order[k].idx];
+            sum_x += pt.x; sum_y += pt.y; sum_z += pt.z;
+            sum_i += pt.intensity;
+            if (pt.confidence > conf) {
+                conf = pt.confidence;
+                cls = pt.semantic_class;
+            }
+        }
+        float inv_c = 1.0f / static_cast<float>(end - begin);
         Point3D pt;
-        pt.x = cell.sum_x * inv_c;
-        pt.y = cell.sum_y * inv_c;
-        pt.z = cell.sum_z * inv_c;
-        pt.intensity = cell.sum_intensity * inv_c;
-        pt.semantic_class = cell.semantic_class;
-        pt.confidence = cell.confidence;
+        pt.x = sum_x * inv_c;
+        pt.y = sum_y * inv_c;
+        pt.z = sum_z * inv_c;
+        pt.intensity = sum_i * inv_c;
+        pt.semantic_class = cls;
+        pt.confidence = conf;
         downsampled.push_back(pt);
+    };
+
+    for (size_t i = 1; i <= order.size(); ++i) {
+        if (i == order.size() ||
+            order[i].vx != order[run_start].vx ||
+            order[i].vy != order[run_start].vy ||
+            order[i].vz != order[run_start].vz) {
+            flush_run(run_start, i);
+            run_start = i;
+        }
     }
 
     return downsampled;

@@ -129,6 +129,7 @@ set(TEST_TARGETS
     test_temporal_fusion
     test_boundary_alignment
     test_coordinate_transform
+    test_preprocessing
 )
 
 foreach(test_name ${TEST_TARGETS})
