@@ -118,7 +118,9 @@ private:
         return q;
     }
 
-    std::pair<int, int> getTileIndices(float x, float y) const;
+    // M8: the old master-tile index helper was dead code (the microcell
+    // lattice supersedes tiling) and has been removed. tile_size remains a
+    // loaded config field reserved for future use.
 
     // Level-2 refinement for one observation, driven by the importance
     // engine (distance + motion + semantic relevance).

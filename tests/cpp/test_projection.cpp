@@ -8,7 +8,8 @@ int main() {
     ps26053::GridConfig cfg;
     cfg.x_min = -10.0f; cfg.x_max = 10.0f;
     cfg.y_min = -10.0f; cfg.y_max = 10.0f;
-    cfg.tile_size = 1.0f;
+    // L3: cfg.tile_size is intentionally not set here — it is a reserved
+    // config field with no effect on cell layout (see M8).
 
     ps26053::Grid25D grid(cfg);
 

@@ -150,13 +150,14 @@ bool LidarIO::writePLY(const std::string& filepath, const PointCloud& cloud) {
     out << "end_header\n";
 
     for (const auto& pt : cloud) {
-        uint8_t r = 120, g = 120, b = 120;
-        if (pt.semantic_class == SemanticClass::TERRAIN) {
-            r = 140; g = 140; b = 140; // Terrain: Gray
-        } else if (pt.semantic_class == SemanticClass::STATIC_OBSTACLE) {
-            r = 230; g = 50; b = 50; // Static: Red
+        // Locked architecture palette (M1); UNKNOWN is grey (M3).
+        uint8_t r = 16, g = 185, b = 129; // TERRAIN: emerald #10B981
+        if (pt.semantic_class == SemanticClass::STATIC_OBSTACLE) {
+            r = 0; g = 243; b = 255; // STATIC: cyan #00F3FF
         } else if (pt.semantic_class == SemanticClass::DYNAMIC_OBSTACLE) {
-            r = 40; g = 220; b = 60; // Dynamic: Green
+            r = 245; g = 158; b = 11; // DYNAMIC: amber #F59E0B
+        } else if (pt.semantic_class == SemanticClass::UNKNOWN) {
+            r = 128; g = 128; b = 128; // Grey: unclassified
         }
 
         out << pt.x << " " << pt.y << " " << pt.z << " "

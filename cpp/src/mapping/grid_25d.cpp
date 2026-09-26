@@ -9,12 +9,6 @@ namespace ps26053 {
 
 Grid25D::Grid25D(const GridConfig& config) : config_(config) {}
 
-std::pair<int, int> Grid25D::getTileIndices(float x, float y) const {
-    int ix = static_cast<int>(std::floor((x - config_.x_min) / config_.tile_size));
-    int iy = static_cast<int>(std::floor((y - config_.y_min) / config_.tile_size));
-    return {ix, iy};
-}
-
 void Grid25D::updateWithPointCloud(const PointCloud& cloud, double timestamp, const Eigen::Vector3f& sensor_pos) {
     constexpr float q = ResolutionPolicy::alignmentQuantum();
 
@@ -254,6 +248,7 @@ void Grid25D::decayTemporal(double current_time, double max_staleness_sec) {
 
 std::vector<Cell> Grid25D::getAllCells() const {
     std::vector<Cell> result;
+    result.reserve(tiles_.size() * 2); // L6: avoid per-leaf reallocations
     for (const auto& [key, tree] : tiles_) {
         auto leaves = tree->getActiveCells();
         for (const auto* c : leaves) {
@@ -322,11 +317,16 @@ bool Grid25D::exportToPLY(const std::string& filepath, bool occupied_only) const
         float cy = c.bounds.centerY();
         float cz = c.elevation;
 
-        uint8_t r = 90, g = 90, b = 90; // Default terrain: slate gray
+        // Locked architecture palette (M1): emerald / cyan / amber.
+        // UNKNOWN gets neutral grey so inference failure is visible (M3),
+        // never disguised as terrain.
+        uint8_t r = 16, g = 185, b = 129; // TERRAIN: emerald #10B981
         if (c.semantic_class == SemanticClass::STATIC_OBSTACLE) {
-            r = 230; g = 50; b = 50; // Red
+            r = 0; g = 243; b = 255; // Cyan #00F3FF
         } else if (c.semantic_class == SemanticClass::DYNAMIC_OBSTACLE) {
-            r = 40; g = 220; b = 50; // Green
+            r = 245; g = 158; b = 11; // Amber #F59E0B
+        } else if (c.semantic_class == SemanticClass::UNKNOWN) {
+            r = 128; g = 128; b = 128; // Grey: unclassified
         }
 
         out << cx << " " << cy << " " << cz << " "

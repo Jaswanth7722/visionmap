@@ -18,7 +18,9 @@ inline std::string semanticClassName(SemanticClass sc) {
     switch (sc) {
         case SemanticClass::TERRAIN: return "terrain";
         case SemanticClass::STATIC_OBSTACLE: return "static_obstacle";
-        case SemanticClass::DYNAMIC_OBSTACLE: return "dynamic_obstacle";
+        // M6: display string unified with Python/config ("dynamic_object");
+        // the C++ enum name DYNAMIC_OBSTACLE itself is spec-locked.
+        case SemanticClass::DYNAMIC_OBSTACLE: return "dynamic_object";
         default: return "unknown";
     }
 }

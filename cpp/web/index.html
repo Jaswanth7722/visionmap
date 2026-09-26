@@ -1226,8 +1226,12 @@
                         c.setHex(0xf59e0b); // Dynamic Vehicles / Obstacles (Amber/Orange)
                     } else if (pt.semClass === 1) {
                         c.setHex(0x00f3ff); // Static Structures / Curbs / Trees (Cyan)
-                    } else {
+                    } else if (pt.semClass === 0) {
                         c.setHex(0x10b981); // Road / Ground Surface (Emerald Green)
+                    } else {
+                        // M3: UNKNOWN/unclassified renders grey, never as
+                        // terrain, so inference failure stays visible.
+                        c.setHex(0x808080);
                     }
                 } else if (colorMode === 'elevation') {
                     // Physical height elevation

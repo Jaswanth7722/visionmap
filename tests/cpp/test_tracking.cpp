@@ -30,10 +30,11 @@ int main() {
     auto tracks = tracker.getActiveTracks();
     assert(!tracks.empty());
     assert(tracks[0].confirmed == true);
-    // Estimated velocity should be close to 2.0 m/s along X
+    // Estimated velocity should be close to 2.0 m/s along X.
+    // L2: the bound must mean something — 0.5x would pass at quarter speed.
     std::cout << "Track #" << tracks[0].id << " velocity: vx=" << tracks[0].velocity.x()
               << " vy=" << tracks[0].velocity.y() << std::endl;
-    assert(tracks[0].velocity.x() > 0.5f);
+    assert(tracks[0].velocity.x() > 1.0f);
     // H1: confidence is computed from history, never the default 0.
     assert(tracks[0].confidence > 0.5f);
 

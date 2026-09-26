@@ -138,6 +138,12 @@ set(TEST_TARGETS
 foreach(test_name ${TEST_TARGETS})
     add_executable(${test_name} tests/cpp/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE ps26053_core)
+    # M12: the suite is assert()-based, so keep assertions live in test
+    # binaries even under Release (-DNDEBUG would turn every test into a
+    # program that always passes while checking nothing).
+    target_compile_options(${test_name} PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UNDEBUG>)
     copy_onnx_dll(${test_name})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()

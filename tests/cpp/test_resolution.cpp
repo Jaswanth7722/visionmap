@@ -1,6 +1,12 @@
 #include "ps26053/resolution/resolution_policy.hpp"
 #include <cassert>
+#include <cmath>
 #include <iostream>
+
+namespace {
+// L1: exact float equality on policy outputs is brittle; compare with tolerance.
+bool near(float a, float b) { return std::fabs(a - b) < 1e-6f; }
+} // namespace
 
 int main() {
     std::cout << "[Test] Running test_resolution ...\n";
@@ -9,20 +15,20 @@ int main() {
 
     // Test Level 1: Distance bands
     // 0-10m -> 5cm
-    assert(policy.getBaseResolution(5.0f) == 0.05f);
-    assert(policy.getBaseResolution(9.9f) == 0.05f);
+    assert(near(policy.getBaseResolution(5.0f), 0.05f));
+    assert(near(policy.getBaseResolution(9.9f), 0.05f));
 
     // 10-30m -> 15cm
-    assert(policy.getBaseResolution(10.1f) == 0.15f);
-    assert(policy.getBaseResolution(25.0f) == 0.15f);
+    assert(near(policy.getBaseResolution(10.1f), 0.15f));
+    assert(near(policy.getBaseResolution(25.0f), 0.15f));
 
     // 30-60m -> 30cm
-    assert(policy.getBaseResolution(35.0f) == 0.30f);
-    assert(policy.getBaseResolution(59.9f) == 0.30f);
+    assert(near(policy.getBaseResolution(35.0f), 0.30f));
+    assert(near(policy.getBaseResolution(59.9f), 0.30f));
 
     // 60-100m -> 50cm
-    assert(policy.getBaseResolution(65.0f) == 0.50f);
-    assert(policy.getBaseResolution(90.0f) == 0.50f);
+    assert(near(policy.getBaseResolution(65.0f), 0.50f));
+    assert(near(policy.getBaseResolution(90.0f), 0.50f));
 
     // Test Level 2: Local refinement triggers
     ps26053::Cell cell;
