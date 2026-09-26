@@ -9,6 +9,33 @@ This repository implements the production-grade **C++17/20 runtime architecture*
 
 ---
 
+## 0. Quick Start (Windows PowerShell, from the repo root)
+
+```powershell
+# Build everything (MinGW + Ninja, already configured in build/)
+cmake --build build --parallel 4
+
+# Run all C++ tests
+ctest --test-dir build --output-on-failure
+
+# Run all Python tests (training/export/eval utilities only)
+pytest tests/python/
+
+# Map one frame -> 2.5D world model PLY
+.\build\bin\lidar_mapper.exe data\raw\000000.bin models\onnx\pointnet2_semseg.onnx results\maps\adaptive_map_frame000000.ply
+
+# Uniform-vs-adaptive benchmark with QA + coverage report
+.\build\bin\benchmark.exe data\raw\000000.bin models\onnx\pointnet2_semseg.onnx
+
+# Live dashboard: 3D view + 2.5D BEV + tracks + measured metrics (allow ~1 min
+# for the first ONNX load + full-frame CPU inference, then open the URL)
+.\build\bin\live_dashboard_server.exe 8080
+# or: python scripts\run_dashboard.py [port]
+# then open http://localhost:8080
+```
+
+---
+
 ## 1. Project Directory Structure
 
 ```
@@ -91,12 +118,12 @@ pip install -r requirements.txt
 ## 3. Building the C++ Pipeline
 
 To configure and build with CMake and Ninja:
-```bash
-# Configure
+```powershell
+# Configure (only needed if build/ is deleted)
 cmake -B build -G "Ninja" -DCMAKE_CXX_COMPILER=g++
 
 # Build all libraries, executables, and tests
-ninja -C build
+cmake --build build --parallel 4
 ```
 
 ---
@@ -105,20 +132,20 @@ ninja -C build
 
 ### A. Run Main LiDAR Mapper
 Runs full ingestion, PointNet++ C++ inference, Kalman tracking, and 2.5D world model generation:
-```bash
-./build/bin/lidar_mapper data/raw/000000.bin models/onnx/pointnet2_semseg.onnx results/maps/adaptive_map_frame000000.ply
+```powershell
+.\build\bin\lidar_mapper.exe data\raw\000000.bin models\onnx\pointnet2_semseg.onnx results\maps\adaptive_map_frame000000.ply
 ```
 
 ### B. Run Uniform vs Adaptive Benchmark
 Direct proof-of-value benchmark comparing uniform fine grid (5 cm) against PS26053 adaptive variable-resolution:
-```bash
-./build/bin/benchmark data/raw/000000.bin models/onnx/pointnet2_semseg.onnx
+```powershell
+.\build\bin\benchmark.exe data\raw\000000.bin models\onnx\pointnet2_semseg.onnx
 ```
 
 ### C. Run Live Dashboard Server (C++-only runtime and dashboard)
-```bash
-./build/bin/live_dashboard_server.exe 8080
-# or: python scripts/run_dashboard.py [port]
+```powershell
+.\build\bin\live_dashboard_server.exe 8080
+# or: python scripts\run_dashboard.py [port]
 ```
 then open http://localhost:8080 — 3D semantic view, 2.5D BEV, tracks, measured metrics and boundary QA, all served from the native pipeline with no Python in the loop.
 
@@ -137,8 +164,13 @@ then open http://localhost:8080 — 3D semantic view, 2.5D BEV, tracks, measured
 ## 5. Running the Test Suite
 
 Run all C++ unit tests:
-```bash
+```powershell
 ctest --test-dir build --output-on-failure
+```
+
+Run all Python tests (training/export/eval utilities):
+```powershell
+pytest tests/python/
 ```
 Verified passing tests (10 C++ + Python suite):
 - `test_resolution`: Distance-band resolution assignment and Level-2 motion/gradient triggers.
