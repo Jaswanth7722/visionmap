@@ -28,7 +28,8 @@ struct CellKeyHash {
 
 } // namespace
 
-SingleKalmanFilter::SingleKalmanFilter(const Eigen::Vector2f& initial_pos, float dt) {
+SingleKalmanFilter::SingleKalmanFilter(const Eigen::Vector2f& initial_pos, float dt,
+                                         float q_pos, float q_vel, float r_pos) {
     x = Eigen::Vector4f(initial_pos.x(), initial_pos.y(), 0.0f, 0.0f);
     P = Eigen::Matrix4f::Identity() * 1.0f;
     P(2, 2) = 10.0f;
@@ -38,15 +39,15 @@ SingleKalmanFilter::SingleKalmanFilter(const Eigen::Vector2f& initial_pos, float
     F(0, 2) = dt;
     F(1, 3) = dt;
 
-    Q = Eigen::Matrix4f::Identity() * 0.1f;
-    Q(2, 2) = 0.5f;
-    Q(3, 3) = 0.5f;
+    Q = Eigen::Matrix4f::Identity() * q_pos;
+    Q(2, 2) = q_vel;
+    Q(3, 3) = q_vel;
 
     H = Eigen::Matrix<float, 2, 4>::Zero();
     H(0, 0) = 1.0f;
     H(1, 1) = 1.0f;
 
-    R = Eigen::Matrix2f::Identity() * 0.2f;
+    R = Eigen::Matrix2f::Identity() * r_pos;
 }
 
 void SingleKalmanFilter::predict(float dt) {
@@ -77,11 +78,12 @@ std::vector<BoundingBox2D> KalmanTracker::clusterDynamicPoints(const PointCloud&
     }
     if (pts.empty()) return clusters;
 
-    // 3D Euclidean connected components (H1): points within kClusterRadius
-    // link up, so one vehicle forms one cluster regardless of its span, and
-    // objects stacked in Z never merge. Union-find over a 3D spatial hash.
-    constexpr float kClusterRadius = 1.0f;
-    constexpr size_t kMinClusterPoints = 5;
+    // 3D Euclidean connected components (H1): points within the configured
+    // cluster radius link up, so one vehicle forms one cluster regardless of
+    // its span, and objects stacked in Z never merge. Union-find over a 3D
+    // spatial hash.
+    const float kClusterRadius = config_.cluster_radius;
+    const size_t kMinClusterPoints = config_.min_cluster_size;
 
     std::unordered_map<CellKey, std::vector<size_t>, CellKeyHash> grid;
     for (size_t i = 0; i < pts.size(); ++i) {
@@ -169,8 +171,9 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
     // 1. Predict existing tracks using the REAL inter-frame interval (H1).
     // Non-positive intervals (repeated timestamps) predict with dt = 0, i.e.
     // no motion assumed; large gaps are clamped to 1 s to keep the
-    // covariance update bounded.
-    float dt = 0.1f;
+    // covariance update bounded. With no history yet, the configured nominal
+    // step applies (harmless: no tracks exist to predict).
+    float dt = config_.nominal_dt;
     if (has_last_timestamp_) {
         double raw_dt = timestamp - last_timestamp_;
         dt = (raw_dt > 0.0) ? static_cast<float>(std::min(raw_dt, 1.0)) : 0.0f;
@@ -184,7 +187,7 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
 
     // 2. Greedy association
     for (size_t t = 0; t < tracks_.size(); ++t) {
-        float min_dist = 3.0f; // 3 meter gating threshold
+        float min_dist = config_.association_distance; // configured gating threshold
         int best_c = -1;
 
         for (size_t c = 0; c < clusters.size(); ++c) {
@@ -212,7 +215,7 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
             // Confidence is computed from association history (H1), never
             // left at the constructor default.
             tracks_[t].confidence = trackConfidence(tracks_[t].hits);
-            if (tracks_[t].hits >= 2) {
+            if (tracks_[t].hits >= config_.min_hits_to_confirm) {
                 tracks_[t].confirmed = true;
             }
         } else {
@@ -224,7 +227,9 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
     for (size_t c = 0; c < clusters.size(); ++c) {
         if (!cluster_matched[c]) {
             Eigen::Vector2f pos(clusters[c].centerX(), clusters[c].centerY());
-            SingleKalmanFilter new_kf(pos, dt);
+            SingleKalmanFilter new_kf(pos, dt, config_.process_noise_pos,
+                                      config_.process_noise_vel,
+                                      config_.measurement_noise_pos);
             filters_.push_back(new_kf);
 
             TrackedObject track;
@@ -243,7 +248,7 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
 
     // 4. Remove dead tracks
     for (int i = static_cast<int>(tracks_.size()) - 1; i >= 0; --i) {
-        if (tracks_[i].misses > 3) {
+        if (tracks_[i].misses > config_.max_missed_frames) {
             tracks_.erase(tracks_.begin() + i);
             filters_.erase(filters_.begin() + i);
         }

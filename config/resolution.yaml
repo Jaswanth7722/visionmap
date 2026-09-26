@@ -26,9 +26,11 @@ level2_local_refinement:
     elevation_gradient:
       enabled: true
       curb_height_threshold: 0.12 # meters (detects curbs and steps)
-    semantic_boundary:
-      enabled: true
-      min_entropy_threshold: 0.65 # uncertainty at terrain-obstacle transition
+
+# NOTE (H3): a semantic_boundary trigger (min_entropy_threshold) used to be
+# listed here, but the code has no entropy/uncertainty trigger — low
+# confidence feeds the importance score instead. Removed rather than left to
+# imply an unimplemented code path.
 
 world_grid_extent:
   x_min: -60.0
@@ -36,3 +38,7 @@ world_grid_extent:
   y_min: -60.0
   y_max: 60.0
   base_tile_size: 1.0 # 1m master tiles containing variable resolution cells
+
+# NOTE (M9): the grid extent intentionally exceeds the lidar.yaml ROI box
+# (+/-50 m): the ROI corners reach ~70 m from the sensor, and points outside
+# the grid bounds are dropped by Grid25D, so the margin is load-bearing.

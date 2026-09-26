@@ -72,6 +72,7 @@ set(CORE_SOURCES
     cpp/src/inference/onnx_engine.cpp
     cpp/src/tracking/kalman_tracker.cpp
     cpp/src/runtime/pipeline.cpp
+    cpp/src/runtime/config_loader.cpp
 )
 
 add_library(ps26053_core STATIC ${CORE_SOURCES})
@@ -131,6 +132,7 @@ set(TEST_TARGETS
     test_coordinate_transform
     test_preprocessing
     test_io
+    test_config
 )
 
 foreach(test_name ${TEST_TARGETS})

@@ -31,6 +31,9 @@ int main(int argc, char** argv) {
     if (!pipeline.initialize()) {
         std::cerr << "[Warn] Proceeding with heuristic perception engine...\n";
     }
+    // H3: behavior comes from config/*.yaml (compiled defaults apply loudly
+    // only when the files are missing or malformed).
+    pipeline.loadConfig("config");
 
     // 3. Process frame
     std::cout << "[Pipeline] Running per-frame end-to-end processing...\n";

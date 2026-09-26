@@ -42,6 +42,9 @@ int main(int argc, char** argv) {
     std::cout << "--- Running Mode 2: Adaptive Variable-Resolution (Dual-Level Architecture) ---\n";
     ps26053::MappingPipeline adaptive_pipeline(model_path);
     adaptive_pipeline.initialize();
+    // H3: behavior comes from config/*.yaml; compiled defaults apply loudly
+    // only when the files are missing or malformed.
+    adaptive_pipeline.loadConfig("config");
 
     auto metrics = adaptive_pipeline.processFrame(raw_scan, 0.0, 0);
     size_t adaptive_cell_count = metrics.active_cells;

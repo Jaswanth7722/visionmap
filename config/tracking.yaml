@@ -5,10 +5,14 @@ tracking:
   measurement_dim: 2 # [x, y]
   
 association:
-  max_euclidean_distance: 2.5 # meters
-  gating_threshold_chi2: 9.21 # 99% gating for 2-DOF
+  max_euclidean_distance: 2.5 # meters (greedy nearest-centroid gate)
   max_missed_frames: 5
   min_hits_to_confirm: 3
+
+# NOTE (H3): gating_threshold_chi2 and max_cluster_size used to be listed
+# here. Association is greedy-Euclidean (no chi-squared test exists) and
+# clustering has no upper size cap, so both keys were removed rather than
+# left to imply unimplemented behavior.
 
 kalman_filter:
   process_noise_pos: 0.1   # variance
@@ -18,5 +22,4 @@ kalman_filter:
 
 cluster_extraction:
   min_cluster_size: 15
-  max_cluster_size: 5000
-  cluster_tolerance: 0.65  # meters
+  cluster_tolerance: 0.65  # meters (3D Euclidean link radius)

@@ -54,6 +54,14 @@ public:
 
     void addBand(float max_range, float cell_size, const std::string& name);
 
+    /**
+     * @brief Replace the band table wholesale (H3: loaded from
+     * config/resolution.yaml). Bands should be sorted by ascending max_range.
+     */
+    void setBands(const std::vector<DistanceBand>& bands) { bands_ = bands; }
+    void setMotionVelocityThreshold(float v) { motion_velocity_threshold_ = v; }
+    void setCurbThreshold(float c) { curb_threshold_ = c; }
+
 private:
     std::vector<DistanceBand> bands_;
     float curb_threshold_{0.12f};        // 12 cm curb height trigger

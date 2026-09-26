@@ -18,6 +18,24 @@ bool MappingPipeline::initialize() {
     return initialized_;
 }
 
+bool MappingPipeline::loadConfig(const std::string& config_dir) {
+    AppConfig cfg;
+    if (!loadAppConfig(config_dir, cfg)) {
+        std::cerr << "[Pipeline] Continuing with compiled defaults." << std::endl;
+        return false;
+    }
+    prep_config_ = cfg.preprocessing;
+    grid_.configure(cfg.grid);
+    grid_.mutablePolicy().setBands(cfg.bands);
+    grid_.mutablePolicy().setMotionVelocityThreshold(cfg.motion_velocity_threshold);
+    grid_.mutablePolicy().setCurbThreshold(cfg.curb_threshold);
+    tracker_.configure(cfg.tracker);
+    std::cout << "[Pipeline] Runtime config loaded from '" << config_dir << "' ("
+              << cfg.bands.size() << " distance bands, grid depth "
+              << cfg.grid.max_depth << ")." << std::endl;
+    return true;
+}
+
 FrameMetrics MappingPipeline::processFrame(const PointCloud& raw_scan, double timestamp, int frame_idx) {
     FrameMetrics metrics;
     metrics.frame_index = frame_idx;
@@ -35,7 +53,11 @@ FrameMetrics MappingPipeline::processFrame(const PointCloud& raw_scan, double ti
     // Stage 1: Preprocessing (ROI Crop & Voxel Downsampling)
     auto t0 = std::chrono::high_resolution_clock::now();
     PointCloud roi_cloud = PointCloudOps::filterROI(world_scan, prep_config_);
-    processed_cloud_ = PointCloudOps::voxelGridDownsample(roi_cloud, prep_config_.voxel_leaf_size);
+    if (prep_config_.enable_voxel) {
+        processed_cloud_ = PointCloudOps::voxelGridDownsample(roi_cloud, prep_config_.voxel_leaf_size);
+    } else {
+        processed_cloud_ = roi_cloud;
+    }
     auto t1 = std::chrono::high_resolution_clock::now();
     metrics.preprocess_time_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 

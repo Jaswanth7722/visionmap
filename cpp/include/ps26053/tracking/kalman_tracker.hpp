@@ -14,14 +14,36 @@ struct SingleKalmanFilter {
     Eigen::Matrix<float, 2, 4> H; // Measurement matrix
     Eigen::Matrix2f R; // Measurement noise
 
-    SingleKalmanFilter(const Eigen::Vector2f& initial_pos, float dt = 0.1f);
+    SingleKalmanFilter(const Eigen::Vector2f& initial_pos, float dt = 0.1f,
+                       float q_pos = 0.1f, float q_vel = 0.5f, float r_pos = 0.2f);
     void predict(float dt);
     void update(const Eigen::Vector2f& measurement);
+};
+
+/**
+ * @brief Tracker tunables, loaded from config/tracking.yaml (H3).
+ * Compiled defaults mirror the shipped YAML so behavior is identical with
+ * or without the config files; tests configure explicitly where they need
+ * smaller clusters.
+ */
+struct TrackerConfig {
+    float association_distance{2.5f};
+    int max_missed_frames{5};
+    int min_hits_to_confirm{3};
+    size_t min_cluster_size{15};
+    float cluster_radius{0.65f};
+    float nominal_dt{0.1f};
+    float process_noise_pos{0.1f};
+    float process_noise_vel{0.5f};
+    float measurement_noise_pos{0.2f};
 };
 
 class KalmanTracker {
 public:
     KalmanTracker();
+
+    void configure(const TrackerConfig& config) { config_ = config; }
+    const TrackerConfig& config() const { return config_; }
 
     /**
      * @brief Extract clusters from dynamic points and update tracks
@@ -36,6 +58,7 @@ private:
     std::vector<SingleKalmanFilter> filters_;
     double last_timestamp_{0.0};
     bool has_last_timestamp_{false};
+    TrackerConfig config_;
 
     /**
      * @brief Track confidence from association history: a new track starts

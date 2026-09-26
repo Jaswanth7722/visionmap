@@ -14,12 +14,10 @@ roi_crop:
   z_min: -4.0
   z_max: 6.0
 
-noise_filter:
-  enabled: true
-  min_intensity: 0.0
-  isolated_point_removal: true
-  k_neighbors: 8
-  std_ratio: 1.5
+# NOTE (H3): an intensity/noise-filter section used to live here, but no such
+# filter exists in the code. It was removed rather than left to imply behavior
+# the pipeline does not have. Re-add it only together with an implementation
+# wired in MappingPipeline::processFrame.
 
 voxel_downsample:
   enabled: true

@@ -76,6 +76,9 @@ public:
         if (!pipeline_->initialize()) {
             std::cerr << "[Warn] Could not load ONNX model; running in heuristic perception mode.\n";
         }
+        // H3: behavior comes from config/*.yaml (compiled defaults apply
+        // loudly only when the files are missing or malformed).
+        pipeline_->loadConfig("config");
 
         // Preload baseline LiDAR scan if available
         std::string bin_path = "data/raw/000000.bin";

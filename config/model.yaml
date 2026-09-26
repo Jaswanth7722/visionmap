@@ -7,14 +7,18 @@ model:
   metadata_path: "models/metadata/model_metadata.json"
   
 inference:
-  subsample_points: 4096
+  full_cloud_inference: true  # every preprocessed point goes through the network (C4)
+  chunk_points: 4096  # per-ORT-run point count (dynamic axis; see InferenceConfig)
   batch_size: 1
   input_channels: 3  # (x, y, z), matching the deployed ONNX tensor
   num_classes: 3     # 0: terrain, 1: static obstacle, 2: dynamic object
-  onnx_intra_op_threads: 4
-  onnx_inter_op_threads: 1
   execution_provider: "CPUExecutionProvider"
-  warmup_runs: 5
+
+# NOTE (H3): subsample_points, warmup_runs, onnx_intra_op_threads and
+# onnx_inter_op_threads used to be listed here. The pipeline classifies the
+# full cloud (no subsampling), performs no warmup runs, and uses a fixed
+# 4-thread ORT session that is not YAML-configurable — all four keys were
+# removed rather than left to imply unimplemented behavior.
 
 classes:
   0: "terrain"

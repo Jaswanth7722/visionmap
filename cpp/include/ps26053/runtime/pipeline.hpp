@@ -3,6 +3,7 @@
 #include "ps26053/common/types.hpp"
 #include "ps26053/preprocessing/point_cloud_ops.hpp"
 #include "ps26053/preprocessing/coordinate_transform.hpp"
+#include "ps26053/runtime/config_loader.hpp"
 #include "ps26053/inference/onnx_engine.hpp"
 #include "ps26053/tracking/kalman_tracker.hpp"
 #include "ps26053/mapping/grid_25d.hpp"
@@ -33,6 +34,15 @@ public:
     ~MappingPipeline() = default;
 
     bool initialize();
+
+    /**
+     * @brief Load runtime YAML config (H3) and apply it to every stage.
+     * Must be called after construction and before the first frame; the grid
+     * is cleared because bounds/bands/depth define cell identity.
+     * @return true when all files loaded; false otherwise (compiled defaults
+     * remain active, with a loud diagnostic — never a silent fallback).
+     */
+    bool loadConfig(const std::string& config_dir = "config");
 
     /**
      * @brief Process one complete LiDAR scan through the end-to-end C++ pipeline

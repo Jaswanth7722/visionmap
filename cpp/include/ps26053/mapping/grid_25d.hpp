@@ -15,6 +15,7 @@ struct GridConfig {
     float y_min{-60.0f};
     float y_max{60.0f};
     float tile_size{1.0f}; // 1.0 meter master tile
+    int max_depth{3};      // quadtree subdivision depth (resolution.yaml)
 };
 
 /**
@@ -83,7 +84,19 @@ public:
      */
     size_t estimateMemoryBytes() const;
 
+    /**
+     * @brief Apply a new configuration (H3: from config files). Clears all
+     * stored cells, since bounds, bands and depth define cell identity.
+     * Must be called before the first frame, not mid-stream.
+     */
+    void configure(const GridConfig& config) {
+        config_ = config;
+        tiles_.clear();
+        micro_owner_.clear();
+    }
+
     const ResolutionPolicy& getResolutionPolicy() const { return policy_; }
+    ResolutionPolicy& mutablePolicy() { return policy_; }
 
 private:
     GridConfig config_;

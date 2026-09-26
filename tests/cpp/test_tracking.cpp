@@ -13,9 +13,9 @@ int main() {
         float x_pos = 10.0f + 2.0f * static_cast<float>(t);
 
         ps26053::PointCloud dynamic_points;
-        for (int i = 0; i < 10; ++i) {
-            float dx = (i % 3) * 0.2f - 0.2f;
-            float dy = (i / 3) * 0.2f - 0.2f;
+        for (int i = 0; i < 16; ++i) {
+            float dx = (i % 4) * 0.2f - 0.3f;
+            float dy = (i / 4) * 0.2f - 0.3f;
             ps26053::Point3D pt;
             pt.x = x_pos + dx;
             pt.y = 5.0f + dy;
@@ -43,18 +43,18 @@ int main() {
     {
         ps26053::KalmanTracker zt;
         ps26053::PointCloud pts;
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < 16; ++i) {
             ps26053::Point3D p;
-            p.x = 10.0f + (i % 3) * 0.2f;
-            p.y = 5.0f + (i / 3) * 0.2f;
+            p.x = 10.0f + (i % 4) * 0.2f;
+            p.y = 5.0f + (i / 4) * 0.2f;
             p.z = 0.5f;
             p.semantic_class = ps26053::SemanticClass::DYNAMIC_OBSTACLE;
             pts.push_back(p);
         }
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < 16; ++i) {
             ps26053::Point3D p;
-            p.x = 10.0f + (i % 3) * 0.2f;
-            p.y = 5.0f + (i / 3) * 0.2f;
+            p.x = 10.0f + (i % 4) * 0.2f;
+            p.y = 5.0f + (i / 4) * 0.2f;
             p.z = 3.0f;
             p.semantic_class = ps26053::SemanticClass::DYNAMIC_OBSTACLE;
             pts.push_back(p);
