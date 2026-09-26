@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -60,6 +61,30 @@ int main() {
     ps26053::PointCloud cloud2(5);
     assert(!ps26053::LidarIO::loadLabels(lbl_path, cloud2, "nonexistent_remap.txt"));
     std::remove(lbl_path.c_str());
+
+    // Sequence listing: sorted .bin paths, non-bin files ignored, missing
+    // dir yields empty (caller falls back to single-scan mode).
+    {
+        const std::string seq_dir = "test_io_tmp_seq";
+        std::filesystem::create_directories(seq_dir);
+        for (const char* name : {"000002.bin", "000000.bin", "notes.txt", "000001.bin"}) {
+            std::ofstream f(std::string(seq_dir) + "/" + name, std::ios::binary);
+            float zero[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            if (std::string(name).size() > 4 &&
+                std::string(name).substr(std::string(name).size() - 4) == ".bin") {
+                f.write(reinterpret_cast<const char*>(zero), sizeof(zero));
+            } else {
+                f << "not a scan";
+            }
+        }
+        auto scans = ps26053::LidarIO::listSequenceScans(seq_dir);
+        assert(scans.size() == 3);
+        assert(scans[0].find("000000.bin") != std::string::npos);
+        assert(scans[1].find("000001.bin") != std::string::npos);
+        assert(scans[2].find("000002.bin") != std::string::npos);
+        assert(ps26053::LidarIO::listSequenceScans("nonexistent_seq_dir").empty());
+        std::filesystem::remove_all(seq_dir);
+    }
 
     std::cout << "[Test PASS] test_io succeeded!\n";
     return 0;

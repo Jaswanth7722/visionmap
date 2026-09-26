@@ -2,6 +2,7 @@
 
 #include "ps26053/common/types.hpp"
 #include <string>
+#include <vector>
 
 namespace ps26053 {
 
@@ -11,6 +12,13 @@ public:
      * @brief Load raw Velodyne HDL64E binary file (4 float32 per point: x, y, z, intensity)
      */
     static bool loadBinScan(const std::string& filepath, PointCloud& out_cloud);
+
+    /**
+     * @brief List *.bin scans in a sequence directory (e.g. SemanticKITTI
+     * velodyne/), sorted lexicographically so frame order is deterministic.
+     * @return sorted paths, or empty when the directory holds no scans.
+     */
+    static std::vector<std::string> listSequenceScans(const std::string& dir);
 
     /**
      * @brief Load SemanticKITTI binary label file (uint32_t per point, lower 16 bits = label)

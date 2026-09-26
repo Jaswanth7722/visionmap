@@ -155,3 +155,16 @@ What I would tell a judge: adaptive uses 14.72 MB vs 3.01 MB uniform (−388.58%
 ## Addendum (2026-09-26): Streamlit runtime stack removed
 
 After this report was written, the Python Streamlit dashboard (`python/visualization/dashboard.py`, `stream_engine.py`, `plot_builder.py`) was deleted and `scripts/run_dashboard.py` now launches the native C++ server. Reason: the problem statement demands low RAM / high FPS, and a second Python runtime (Streamlit + interpreter + duplicated mapping code) contradicts that — peak process RSS for the C++ pipeline is ~154 MB. The C++ `cpp/web/index.html` dashboard (3D view, BEV, tracks, measured metrics, wired boundary QA) is the single visualization path. Python remains for offline training/export/evaluation only. The C8 section above describes work that was valid at the time; its code no longer ships.
+
+## Addendum (2026-09-26): sequence ingestion (no more single-bin-only)
+
+`lidar_mapper`, `benchmark`, and `live_dashboard_server` accept a scan file
+or a sequence directory (`LidarIO::listSequenceScans`, sorted `.bin` list).
+Grid/tracker state persists across frames with nominal 10 Hz timestamps
+(stated in `config/lidar.yaml`, not measured). The benchmark accumulates
+uniform keys and network/fallback counts across frames and reports per-frame
+plus worst-frame boundary QA. The server exposes `GET /api/frames` and
+`POST /api/frame/next` (honest `end_of_sequence` past the last frame).
+Verified on a 3-frame fixture: mapper 27,476 -> 28,784 cells, tracks stable
+at 12; benchmark totals identical inputs (367,878 pts); server frame advance
+matches the mapper's cell counts exactly (cross-binary determinism).

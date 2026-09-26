@@ -1,4 +1,6 @@
 #include "ps26053/io/lidar_io.hpp"
+#include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -6,6 +8,22 @@
 #include <unordered_map>
 
 namespace ps26053 {
+
+std::vector<std::string> LidarIO::listSequenceScans(const std::string& dir) {
+    std::vector<std::string> scans;
+    std::error_code ec;
+    if (!std::filesystem::is_directory(dir, ec)) {
+        return scans; // not a directory: caller treats the path as one scan
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (!entry.is_regular_file(ec)) continue;
+        if (entry.path().extension() == ".bin") {
+            scans.push_back(entry.path().string());
+        }
+    }
+    std::sort(scans.begin(), scans.end());
+    return scans;
+}
 
 bool LidarIO::loadBinScan(const std::string& filepath, PointCloud& out_cloud) {
     std::ifstream file(filepath, std::ios::binary);

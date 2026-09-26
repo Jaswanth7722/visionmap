@@ -58,8 +58,8 @@ std::string readFileContents(const std::string& path) {
 
 class LiveDashboardServer {
 public:
-    LiveDashboardServer(int port = 8080)
-        : port_(port) {
+    LiveDashboardServer(int port = 8080, const std::string& scan_arg = "data/raw/000000.bin")
+        : port_(port), scan_arg_(scan_arg) {
         pipeline_ = std::make_unique<ps26053::MappingPipeline>("models/onnx/pointnet2_semseg.onnx");
     }
 
@@ -81,15 +81,15 @@ public:
         // loudly only when the files are missing or malformed).
         pipeline_->loadConfig("config");
 
-        // Preload baseline LiDAR scan if available
-        std::string bin_path = "data/raw/000000.bin";
-        std::cout << "[Dataset] Preloading benchmark LiDAR scan: " << bin_path << " ...\n";
-        if (ps26053::LidarIO::loadBinScan(bin_path, raw_scan_)) {
-            std::cout << "[Dataset] Loaded " << raw_scan_.size() << " authentic points.\n";
-            // Run initial frame processing
-            latest_metrics_ = pipeline_->processFrame(raw_scan_, 0.0, 0);
+        // Preload LiDAR scan(s): single file or sequence directory. Frame
+        // timestamps assume the nominal 10 Hz from config/lidar.yaml.
+        seq_scans_ = ps26053::LidarIO::listSequenceScans(scan_arg_);
+        if (seq_scans_.empty()) seq_scans_.push_back(scan_arg_);
+        std::cout << "[Dataset] " << seq_scans_.size() << " scan(s) from: " << scan_arg_ << " ...\n";
+        seq_index_ = 0;
+        if (processFrameAt(0)) {
             scan_processed_ = true;
-            std::cout << "[Pipeline] Pre-computation complete: " 
+            std::cout << "[Pipeline] Pre-computation complete: "
                       << latest_metrics_.active_cells << " 2.5D cells, "
                       << latest_metrics_.active_tracks << " tracked objects.\n";
         }
@@ -170,6 +170,12 @@ private:
     ps26053::FrameMetrics latest_metrics_;
     bool scan_processed_{false};
     std::mutex mtx_;
+
+    // Sequence state: ordered scan paths plus the current frame index.
+    std::string scan_arg_;
+    std::vector<std::string> seq_scans_;
+    size_t seq_index_{0};
+    static constexpr double kFrameIntervalSec = 0.1; // nominal 10 Hz (lidar.yaml)
 
     std::atomic<bool> camera_active_{false};
     std::atomic<int> camera_frame_count_{0};
@@ -257,6 +263,10 @@ private:
             serveApiCameraFrame(sock, request);
         } else if (method == "POST" && pure_path == "/api/reset") {
             serveApiReset(sock);
+        } else if (method == "GET" && pure_path == "/api/frames") {
+            serveApiFrames(sock);
+        } else if (method == "POST" && pure_path == "/api/frame/next") {
+            serveApiFrameNext(sock);
         } else if (method == "OPTIONS") {
             serveCorsPreflight(sock);
         } else {
@@ -517,11 +527,67 @@ private:
         sendResponse(sock, 200, "application/json", ss.str());
     }
 
+    // Load and process one sequence frame (grid/tracker state persists).
+    // Must be called with mtx_ held.
+    bool processFrameAt(size_t index) {
+        if (index >= seq_scans_.size()) return false;
+        if (!ps26053::LidarIO::loadBinScan(seq_scans_[index], raw_scan_)) {
+            std::cerr << "[Server] Failed to load scan: " << seq_scans_[index] << "\n";
+            return false;
+        }
+        seq_index_ = index;
+        latest_metrics_ = pipeline_->processFrame(
+            raw_scan_, index * kFrameIntervalSec, static_cast<int>(index));
+        scan_processed_ = true;
+        return true;
+    }
+
+    void serveApiFrames(SOCKET sock) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        std::ostringstream ss;
+        ss << "{\n";
+        ss << "  \"status\": \"ok\",\n";
+        ss << "  \"frame_index\": " << seq_index_ << ",\n";
+        ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
+        ss << "  \"current_scan\": \"" << (seq_scans_.empty() ? "" : seq_scans_[seq_index_]) << "\"\n";
+        ss << "}";
+        sendResponse(sock, 200, "application/json", ss.str());
+    }
+
+    void serveApiFrameNext(SOCKET sock) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(2);
+        if (seq_index_ + 1 >= seq_scans_.size()) {
+            ss << "{\n";
+            ss << "  \"status\": \"end_of_sequence\",\n";
+            ss << "  \"frame_index\": " << seq_index_ << ",\n";
+            ss << "  \"frame_count\": " << seq_scans_.size() << "\n";
+            ss << "}";
+            sendResponse(sock, 200, "application/json", ss.str());
+            return;
+        }
+        if (!processFrameAt(seq_index_ + 1)) {
+            sendResponse(sock, 500, "application/json", "{\"status\":\"frame_load_failed\"}");
+            return;
+        }
+        ss << "{\n";
+        ss << "  \"status\": \"ok\",\n";
+        ss << "  \"frame_index\": " << seq_index_ << ",\n";
+        ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
+        ss << "  \"active_cells\": " << latest_metrics_.active_cells << ",\n";
+        ss << "  \"total_latency_ms\": " << latest_metrics_.total_time_ms << "\n";
+        ss << "}";
+        sendResponse(sock, 200, "application/json", ss.str());
+    }
+
     void serveApiReset(SOCKET sock) {
         std::lock_guard<std::mutex> lock(mtx_);
         pipeline_ = std::make_unique<ps26053::MappingPipeline>("models/onnx/pointnet2_semseg.onnx");
         pipeline_->initialize();
+        pipeline_->loadConfig("config");
         scan_processed_ = false;
+        seq_index_ = 0;
         camera_active_ = false;
         camera_frame_count_ = 0;
         latest_camera_jpeg_binary_.clear();
@@ -574,11 +640,15 @@ int main(int argc, char** argv) {
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 
     int port = 8080;
+    std::string scan_arg = "data/raw/000000.bin";
     if (argc > 1) {
         port = std::stoi(argv[1]);
     }
+    if (argc > 2) {
+        scan_arg = argv[2];
+    }
 
-    LiveDashboardServer server(port);
+    LiveDashboardServer server(port, scan_arg);
     if (!server.start()) {
         std::cerr << "[Error] Failed to start live dashboard server.\n";
         return 1;

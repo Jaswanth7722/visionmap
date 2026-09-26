@@ -24,14 +24,21 @@ pytest tests/python/
 # Map one frame -> 2.5D world model PLY
 .\build\bin\lidar_mapper.exe data\raw\000000.bin models\onnx\pointnet2_semseg.onnx results\maps\adaptive_map_frame000000.ply
 
+# ...or stream a whole sequence directory (SemanticKITTI velodyne/ layout):
+# each positional arg also accepts a directory; optional 4th arg caps frames.
+.\build\bin\lidar_mapper.exe <sequence_dir> models\onnx\pointnet2_semseg.onnx results\maps\sequence_map.ply 100
+
 # Uniform-vs-adaptive benchmark with QA + coverage report
 .\build\bin\benchmark.exe data\raw\000000.bin models\onnx\pointnet2_semseg.onnx
+# ...or a sequence directory (per-frame table + accumulated totals + worst-frame QA):
+.\build\bin\benchmark.exe <sequence_dir> models\onnx\pointnet2_semseg.onnx [max_frames]
 
 # Live dashboard: 3D view + 2.5D BEV + tracks + measured metrics (allow ~1 min
 # for the first ONNX load + full-frame CPU inference, then open the URL)
 .\build\bin\live_dashboard_server.exe 8080
-# or: python scripts\run_dashboard.py [port]
+# or: python scripts\run_dashboard.py [port] [scan_file_or_sequence_dir]
 # then open http://localhost:8080
+# Sequence control at runtime: GET /api/frames, POST /api/frame/next, POST /api/reset
 ```
 
 ---
