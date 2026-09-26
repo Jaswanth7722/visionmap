@@ -1,32 +1,43 @@
 """
 PS26053 Dashboard Launcher
-Starts the Streamlit Live Dynamic Perception Dashboard.
+Starts the native C++ live dashboard server (the Streamlit dashboard was
+removed: the runtime is C++-only for low RAM and higher FPS).
 """
 
+import os
 import sys
-import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-def main():
-    dashboard_script = REPO_ROOT / "python" / "visualization" / "dashboard.py"
+EXE_NAMES = (
+    "live_dashboard_server.exe" if os.name == "nt" else "live_dashboard_server"
+)
+
+
+def find_server_binary() -> Path:
+    candidate = REPO_ROOT / "build" / "bin" / EXE_NAMES
+    if candidate.is_file():
+        return candidate
+    raise FileNotFoundError(
+        f"C++ dashboard server not found at {candidate}. "
+        "Build it first: cmake --build build --parallel 4"
+    )
+
+
+def main(argv=None):
+    port = "8080"
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args:
+        port = args[0]
+    server = find_server_binary()
     print("==============================================================")
     print("  PS 26053: Live 2.5D Adaptive LiDAR Perception Dashboard      ")
-    print("  DRDO Smart Vehicles | Software Autonomous Navigation        ")
+    print("  DRDO Smart Vehicles | Native C++ Runtime                     ")
     print("==============================================================")
-    print(f"Launching dashboard: {dashboard_script}")
-    print("Starting Streamlit server on http://localhost:8501 ...")
+    print(f"Serving dashboard: {server} on http://localhost:{port} ...")
+    os.execv(str(server), [str(server), port])
 
-    cmd = [
-        sys.executable,
-        "-m", "streamlit", "run",
-        str(dashboard_script),
-        "--server.port=8501",
-        "--server.headless=true",
-        "--browser.gatherUsageStats=false"
-    ]
-    subprocess.run(cmd)
 
 if __name__ == "__main__":
     main()

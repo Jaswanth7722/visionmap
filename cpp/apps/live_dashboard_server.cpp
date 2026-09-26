@@ -297,8 +297,9 @@ private:
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"engine\": \"Native C++17/20 (x86_64 MinGW GCC 15.2)\",\n";
         ss << "  \"ram_mb\": " << ram_mb << ",\n";
-        ss << "  \"python_ram_mb\": 1250.0,\n";
-        ss << "  \"ram_reduction_pct\": " << (100.0 * (1.0 - ram_mb / 1250.0)) << ",\n";
+        // NOTE: a python_ram_mb comparison used to live here with a hardcoded
+        // 1250.0 baseline. The runtime is C++-only now and the baseline was
+        // never measured, so both fields were removed rather than fabricated.
         ss << "  \"camera_status\": \"" << (is_cam_live ? "online" : "offline") << "\",\n";
         ss << "  \"camera_frames\": " << camera_frame_count_.load() << ",\n";
         ss << "  \"remote_mobile_active\": " << (is_cam_live && !remote_client_ip_.empty() ? "true" : "false") << ",\n";

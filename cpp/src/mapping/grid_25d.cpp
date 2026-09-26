@@ -12,6 +12,14 @@ Grid25D::Grid25D(const GridConfig& config) : config_(config) {}
 void Grid25D::updateWithPointCloud(const PointCloud& cloud, double timestamp, const Eigen::Vector3f& sensor_pos) {
     constexpr float q = ResolutionPolicy::alignmentQuantum();
 
+    // Pre-size hash tables from the input size to avoid repeated rehashing in
+    // the per-frame hot path (measured, not assumed: rehash pauses showed in
+    // mapping-stage timings on full scans).
+    if (!cloud.empty()) {
+        tiles_.reserve(tiles_.size() + cloud.size() / 2);
+        micro_owner_.reserve(micro_owner_.size() + cloud.size());
+    }
+
     for (const auto& pt : cloud) {
         if (pt.x < config_.x_min || pt.x >= config_.x_max ||
             pt.y < config_.y_min || pt.y >= config_.y_max) {

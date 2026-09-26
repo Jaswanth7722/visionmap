@@ -8,6 +8,10 @@ MappingPipeline::MappingPipeline(const std::string& model_path)
         InferenceConfig cfg;
         cfg.model_path = model_path;
         cfg.num_points = 4096;
+        // Measured 2026-09-26 on Ryzen 7 7435HS (16 threads): 4 intra-op
+        // threads infer the full frame in ~1.7-1.8 s; 8 threads measured
+        // 2.2-2.6 s and unstable (FPS farthest-point loop is sequential, so
+        // extra threads add pool overhead without parallel gain). Keep 4.
         cfg.num_threads = 4;
         return OnnxEngine(cfg);
     }()) {

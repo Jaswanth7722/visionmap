@@ -1,19 +1,14 @@
 # PS26053 Python Environment Requirements
-# Offline Model Training, Export, Visualization, and Benchmarking
+# Offline Model Training, Export, Evaluation, and Utilities.
 #
-# H10: torch is bounded to the validated range (checkpoint trained/exported
-# with 2.10.0, validated here with 2.14.0+cu130); onnx was missing entirely
-# even though export_onnx.py and test_onnx.py import it, which broke clean
-# installs. scipy/tqdm/pyyaml were declared but imported nowhere, so they
-# were removed rather than installed for nothing (M11).
+# NOTE: the live runtime and dashboard are C++-only (low RAM, higher FPS);
+# the Streamlit/Plotly/OpenCV/matplotlib stack was removed with them. The
+# packages below serve training (torch), export/eval (onnx/onnxruntime) and
+# the offline Open3D viewer only.
 torch>=2.10,<2.15
 torchvision
 onnx>=1.18.0
 onnxruntime>=1.18.0
 numpy>=1.24.0,<3.0.0
 open3d>=0.18.0
-opencv-python>=4.8.0
-streamlit>=1.30.0
-plotly>=5.18.0
-matplotlib>=3.7.0
 pytest>=8.0.0

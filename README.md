@@ -49,9 +49,13 @@ ps26053-lidar-mapping/
 │   ├── training/ (dataset.py, model.py, train.py, evaluate.py)
 │   ├── conversion/ (export_onnx.py)
 │   ├── evaluation/ (evaluate_hard_cases.py)
-│   └── visualization/ (project_traffic_jam_photorealistic.py)
+│   └── visualization/ (open3d_viewer.py, project_traffic_jam_photorealistic.py)
+│       # NOTE: the live runtime and dashboard are C++-only
+│       # (cpp/apps/live_dashboard_server.cpp + cpp/web/); no Python in the loop.
 ├── tests/
-│   ├── cpp/ (test_resolution.cpp, test_quadtree.cpp, test_projection.cpp, test_tracking.cpp, test_temporal_fusion.cpp)
+│   ├── cpp/ (test_resolution, test_quadtree, test_projection, test_tracking,
+│   │         test_temporal_fusion, test_boundary_alignment,
+│   │         test_coordinate_transform, test_preprocessing, test_io, test_config)
 │   └── python/ (test_model.py, test_onnx.py, test_dataset.py, test_images_as_pointclouds.py)
 ├── third_party/
 │   └── onnxruntime/ (prebuilt ONNX Runtime C++ v1.20.1 headers & libs)
@@ -111,13 +115,22 @@ Direct proof-of-value benchmark comparing uniform fine grid (5 cm) against PS260
 ./build/bin/benchmark data/raw/000000.bin models/onnx/pointnet2_semseg.onnx
 ```
 
-### Benchmark Results on Example Scan (122,626 Points):
-| Metric | Uniform Baseline (5 cm) | Adaptive (PS26053) | Gain |
+### C. Run Live Dashboard Server (C++-only runtime and dashboard)
+```bash
+./build/bin/live_dashboard_server.exe 8080
+# or: python scripts/run_dashboard.py [port]
+```
+then open http://localhost:8080 — 3D semantic view, 2.5D BEV, tracks, measured metrics and boundary QA, all served from the native pipeline with no Python in the loop.
+
+### Benchmark Results on Example Scan (122,626 Points, measured 2026-09-26):
+| Metric | Uniform Baseline (5 cm) | Adaptive (PS26053) | Delta |
 |---|---|---|---|
-| **Active Stored Cells** | 51,697 | 23,014 | **55.5% fewer cells** |
-| **Memory Footprint** | 4.34 MB | 1.93 MB | **55.5% memory saved** |
-| **Processing Latency** | 39.7 ms | 314.4 ms | Real-time C++ tracking |
-| **Boundary Alignment Errors** | 0 | 0 | **0 Errors (PASS)** |
+| **Shared Input Points** | 49,661 | 49,661 | identical input |
+| **Active Stored Cells** | 35,907 | 27,476 | **−23.48% fewer cells** |
+| **Memory Footprint** | 3.01 MB | 14.95 MB | **−396.24% (adaptive uses MORE — Quadtree-per-cell overhead, tracked design issue)** |
+| **Processing Latency** | 17 ms (key-counting only) | ~2.4 s (full CPU inference) | ~0.4 FPS; GPU required for real time |
+| **Network-Labeled Points** | n/a | 49,661 (100.00%) | 0 fallback |
+| **Boundary Alignment Errors** | n/a (stores no cells) | 0 | **0 Errors (PASS)** |
 
 ---
 
@@ -127,9 +140,10 @@ Run all C++ unit tests:
 ```bash
 ctest --test-dir build --output-on-failure
 ```
-Verified passing tests:
+Verified passing tests (10 C++ + Python suite):
 - `test_resolution`: Distance-band resolution assignment and Level-2 motion/gradient triggers.
-- `test_quadtree`: Quadtree node subdivision and spatial area conservation.
-- `test_projection`: 3D point cloud to 2.5D elevation and clearance calculation.
-- `test_tracking`: 4-DOF Kalman filter state estimation and velocity association.
-- `test_temporal_fusion`: Occupancy decay for stale dynamic cells.
+- `test_quadtree`: Quadtree subdivision, deterministic state redistribution, and refine-to-depth descent.
+- `test_projection`: 3D point cloud to 2.5D elevation and clearance calculation; track association preserves network semantics.
+- `test_tracking`: 3D connected-component clustering, real-timestamp dt, history-based confidence.
+- `test_temporal_fusion`: Occupancy decay plus full clearing of departed cells.
+- `test_boundary_alignment`, `test_coordinate_transform`, `test_preprocessing`, `test_io`, `test_config`: band-transition alignment QA, sensor transform, exact voxelization, shared label remap, YAML config loading.
