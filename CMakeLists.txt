@@ -65,6 +65,7 @@ message(STATUS "ONNX Runtime C++ Library: ${ONNXRUNTIME_LIBRARY}")
 set(CORE_SOURCES
     cpp/src/io/lidar_io.cpp
     cpp/src/preprocessing/point_cloud_ops.cpp
+    cpp/src/preprocessing/coordinate_transform.cpp
     cpp/src/resolution/resolution_policy.cpp
     cpp/src/mapping/quadtree.cpp
     cpp/src/mapping/grid_25d.cpp
@@ -127,6 +128,7 @@ set(TEST_TARGETS
     test_tracking
     test_temporal_fusion
     test_boundary_alignment
+    test_coordinate_transform
 )
 
 foreach(test_name ${TEST_TARGETS})

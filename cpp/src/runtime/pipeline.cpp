@@ -25,9 +25,16 @@ FrameMetrics MappingPipeline::processFrame(const PointCloud& raw_scan, double ti
 
     auto total_start = std::chrono::high_resolution_clock::now();
 
+    // Stage 0: Coordinate transform (sensor frame -> world frame). The pose
+    // defaults to identity; the sensor world position flows into resolution
+    // banding downstream instead of a hardcoded origin.
+    PointCloud world_scan = raw_scan;
+    coord_transform_.toWorld(world_scan);
+    const Eigen::Vector3f sensor_pos = coord_transform_.sensorPosition();
+
     // Stage 1: Preprocessing (ROI Crop & Voxel Downsampling)
     auto t0 = std::chrono::high_resolution_clock::now();
-    PointCloud roi_cloud = PointCloudOps::filterROI(raw_scan, prep_config_);
+    PointCloud roi_cloud = PointCloudOps::filterROI(world_scan, prep_config_);
     processed_cloud_ = PointCloudOps::voxelGridDownsample(roi_cloud, prep_config_.voxel_leaf_size);
     auto t1 = std::chrono::high_resolution_clock::now();
     metrics.preprocess_time_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -44,7 +51,7 @@ FrameMetrics MappingPipeline::processFrame(const PointCloud& raw_scan, double ti
 
     // Stage 4: Adaptive 2.5D World Model Mapping
     auto t4 = std::chrono::high_resolution_clock::now();
-    grid_.updateWithPointCloud(processed_cloud_, timestamp);
+    grid_.updateWithPointCloud(processed_cloud_, timestamp, sensor_pos);
     grid_.updateTrackedObjects(tracker_.getActiveTracks());
     grid_.decayTemporal(timestamp, 2.0);
     auto t5 = std::chrono::high_resolution_clock::now();

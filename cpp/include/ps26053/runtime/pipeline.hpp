@@ -2,6 +2,7 @@
 
 #include "ps26053/common/types.hpp"
 #include "ps26053/preprocessing/point_cloud_ops.hpp"
+#include "ps26053/preprocessing/coordinate_transform.hpp"
 #include "ps26053/inference/onnx_engine.hpp"
 #include "ps26053/tracking/kalman_tracker.hpp"
 #include "ps26053/mapping/grid_25d.hpp"
@@ -37,11 +38,20 @@ public:
     const Grid25D& getGrid() const { return grid_; }
     Grid25D& getGrid() { return grid_; }
 
+    /**
+     * @brief Set the sensor pose used by the coordinate-transform stage.
+     * Default is the identity pose. There is currently no live pose source;
+     * callers with odometry/GPS should set it per frame.
+     */
+    void setSensorPose(const SensorPose& pose) { coord_transform_.setPose(pose); }
+    Eigen::Vector3f sensorPosition() const { return coord_transform_.sensorPosition(); }
+
     const std::vector<TrackedObject>& getTracks() const { return tracker_.getActiveTracks(); }
     const PointCloud& getProcessedCloud() const { return processed_cloud_; }
 
 private:
     PreprocessingConfig prep_config_;
+    CoordinateTransform coord_transform_;
     OnnxEngine inference_engine_;
     KalmanTracker tracker_;
     Grid25D grid_;
