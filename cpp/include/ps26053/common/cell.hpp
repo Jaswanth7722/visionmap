@@ -63,7 +63,17 @@ struct Cell {
     }
 
     /**
-     * @brief Preserve and subdivide state to 4 quadtree children
+     * @brief Preserve and subdivide state to 4 quadtree children.
+     *
+     * Alignment rule 4: parent state is preserved or deterministically
+     * redistributed — never dropped. Each child inherits the parent's belief
+     * state (occupancy, semantics, confidence, motion, importance, timestamp)
+     * and its geometric summary (elevation, min/max z, clearance, ground)
+     * as a prior, because the observations that produced them are not tracked
+     * per quadrant. Later point insertions into individual children refine
+     * them away from the prior. point_count is split as evenly as possible so
+     * the total is preserved exactly (remainder goes to the lowest child
+     * indices, deterministically).
      */
     void subdivideTo(Cell children[4]) const {
         float half_res = resolution * 0.5f;
@@ -78,6 +88,9 @@ struct Cell {
         children[2].bounds = {bounds.min_x, mid_x, mid_y, bounds.max_y};
         // Child 3: Top-Right (NE)
         children[3].bounds = {mid_x, bounds.max_x, mid_y, bounds.max_y};
+
+        uint32_t base_share = point_count / 4;
+        uint32_t remainder = point_count % 4;
 
         for (int i = 0; i < 4; ++i) {
             children[i].resolution = half_res;
@@ -94,7 +107,7 @@ struct Cell {
             children[i].velocity_y = velocity_y;
             children[i].importance = importance;
             children[i].timestamp = timestamp;
-            children[i].point_count = 0;
+            children[i].point_count = base_share + (static_cast<uint32_t>(i) < remainder ? 1u : 0u);
         }
     }
 };
