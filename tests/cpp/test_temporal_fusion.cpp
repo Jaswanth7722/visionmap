@@ -40,6 +40,26 @@ int main() {
     assert(decayed_occ < init_occ);
     std::cout << "Initial occupancy: " << init_occ << ", Decayed occupancy: " << decayed_occ << "\n";
 
+    // H9: once occupancy decays below the clearing threshold, the whole cell
+    // state (not just occupancy) must reset — departed obstacles must not
+    // persist as ghost elevation/semantics.
+    grid.decayTemporal(10.0, 2.0);
+    grid.decayTemporal(15.0, 2.0);
+
+    auto cells2 = grid.getAllCells();
+    bool found_cleared = false;
+    for (const auto& c : cells2) {
+        if (c.bounds.contains(3.0f, 3.0f)) {
+            assert(c.occupancy == 0.0f);
+            assert(c.point_count == 0);
+            assert(c.elevation == 0.0f);
+            assert(c.semantic_class == ps26053::SemanticClass::TERRAIN);
+            found_cleared = true;
+            break;
+        }
+    }
+    assert(found_cleared);
+
     std::cout << "[Test PASS] test_temporal_fusion succeeded!\n";
     return 0;
 }

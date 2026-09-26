@@ -195,10 +195,17 @@ void Grid25D::updateTrackedObjects(const std::vector<TrackedObject>& tracks) {
             auto cells = tree->getActiveCellsMutable();
             for (auto* cell : cells) {
                 if (track.bbox.contains(cell->bounds.centerX(), cell->bounds.centerY())) {
+                    // Associate track identity and motion, but do NOT
+                    // overwrite the network's semantic classification: a
+                    // parked vehicle or wall inside a track box keeps its
+                    // predicted class. Only cells the network left UNKNOWN
+                    // adopt the track's dynamic label.
                     cell->object_id = track.id;
                     cell->velocity_x = track.velocity.x();
                     cell->velocity_y = track.velocity.y();
-                    cell->semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
+                    if (cell->semantic_class == SemanticClass::UNKNOWN) {
+                        cell->semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
+                    }
                     cell->importance = 1.0f;
                 }
             }
@@ -207,6 +214,10 @@ void Grid25D::updateTrackedObjects(const std::vector<TrackedObject>& tracks) {
 }
 
 void Grid25D::decayTemporal(double current_time, double max_staleness_sec) {
+    // Below this occupancy a cell no longer represents anything: clearing it
+    // removes departed obstacles instead of letting stale elevation and
+    // semantics persist forever as ghost geometry.
+    constexpr float kClearOccupancy = 0.05f;
     for (auto& [key, tree] : tiles_) {
         auto cells = tree->getActiveCellsMutable();
         for (auto* cell : cells) {
@@ -216,6 +227,14 @@ void Grid25D::decayTemporal(double current_time, double max_staleness_sec) {
                     cell->occupancy *= 0.5f;
                 } else {
                     cell->occupancy *= 0.85f;
+                }
+                if (cell->occupancy < kClearOccupancy) {
+                    BoundingBox2D bounds = cell->bounds;
+                    float resolution = cell->resolution;
+                    *cell = Cell();
+                    cell->bounds = bounds;
+                    cell->resolution = resolution;
+                    cell->timestamp = current_time;
                 }
             }
         }
