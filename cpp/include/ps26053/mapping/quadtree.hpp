@@ -25,6 +25,7 @@ public:
 
     int getDepth() const { return depth_; }
     size_t countLeaves() const;
+    size_t countNodes() const;
 
 private:
     BoundingBox2D bounds_;
@@ -49,6 +50,13 @@ public:
 
     size_t totalCells() const;
     float baseResolution() const { return base_resolution_; }
+
+    /**
+     * @brief Measured memory footprint of this tree: the Quadtree object
+     * itself plus every heap node plus every stored leaf Cell, all via
+     * sizeof. Used by the honest benchmark memory model (C2).
+     */
+    size_t memoryBytes() const;
 
 private:
     BoundingBox2D bounds_;

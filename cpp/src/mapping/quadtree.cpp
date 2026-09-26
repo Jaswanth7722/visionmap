@@ -105,6 +105,16 @@ size_t QuadtreeNode::countLeaves() const {
     return count;
 }
 
+size_t QuadtreeNode::countNodes() const {
+    size_t count = 1;
+    for (int i = 0; i < 4; ++i) {
+        if (children_[i]) {
+            count += children_[i]->countNodes();
+        }
+    }
+    return count;
+}
+
 // Quadtree Implementation
 Quadtree::Quadtree(const BoundingBox2D& bounds, float base_resolution, int max_depth)
     : bounds_(bounds), base_resolution_(base_resolution), max_depth_(max_depth) {
@@ -145,6 +155,13 @@ std::vector<Cell*> Quadtree::getActiveCellsMutable() {
 
 size_t Quadtree::totalCells() const {
     return root_ ? root_->countLeaves() : 0;
+}
+
+size_t Quadtree::memoryBytes() const {
+    if (!root_) return sizeof(Quadtree);
+    return sizeof(Quadtree) +
+           root_->countNodes() * sizeof(QuadtreeNode) +
+           root_->countLeaves() * sizeof(Cell);
 }
 
 } // namespace ps26053

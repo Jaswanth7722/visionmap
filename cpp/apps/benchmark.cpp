@@ -36,21 +36,30 @@ int main(int argc, char** argv) {
 
     std::cout << "[Benchmark] Input scan: " << bin_path << " (" << raw_scan.size() << " points)\n\n";
 
-    // --- MODE 1: UNIFORM HIGH-RESOLUTION (5cm Fixed Grid) ---
-    std::cout << "--- Running Mode 1: Uniform High-Resolution Baseline (Fixed 5 cm) ---\n";
+    // --- MODE 2 FIRST: the adaptive pipeline defines the shared input. ---
+    // Mode 1 then counts uniform cells over the identical post-ROI,
+    // post-voxel cloud the mapping stage actually receives — not the raw scan.
+    std::cout << "--- Running Mode 2: Adaptive Variable-Resolution (Dual-Level Architecture) ---\n";
+    ps26053::MappingPipeline adaptive_pipeline(model_path);
+    adaptive_pipeline.initialize();
+
+    auto metrics = adaptive_pipeline.processFrame(raw_scan, 0.0, 0);
+    size_t adaptive_cell_count = metrics.active_cells;
+    const ps26053::PointCloud& shared_cloud = adaptive_pipeline.getProcessedCloud();
+    // Honest memory model: measured live-grid footprint (Quadtree objects +
+    // heap nodes + leaf Cells + container overhead), not sizeof(Cell) alone.
+    double adaptive_memory_mb = adaptive_pipeline.getGrid().estimateMemoryBytes() / (1024.0 * 1024.0);
+
+    // --- MODE 1: UNIFORM HIGH-RESOLUTION (5cm Fixed Grid, identical input) ---
+    std::cout << "--- Running Mode 1: Uniform High-Resolution Baseline (Fixed 5 cm, identical input) ---\n";
     auto t_u_start = std::chrono::high_resolution_clock::now();
 
-    ps26053::GridConfig uniform_cfg;
-    uniform_cfg.x_min = -50.0f; uniform_cfg.x_max = 50.0f;
-    uniform_cfg.y_min = -50.0f; uniform_cfg.y_max = 50.0f;
-    uniform_cfg.tile_size = 1.0f;
-
     // A uniform 5cm grid across 100m x 100m would theoretically require (100 / 0.05)^2 = 4,000,000 cells!
-    // We simulate populated active uniform cells:
+    // We count populated active uniform cells over the shared cloud:
     size_t uniform_cell_count = 0;
     {
         std::unordered_set<int64_t> occupied_5cm_cells;
-        for (const auto& pt : raw_scan) {
+        for (const auto& pt : shared_cloud) {
             int64_t cx = static_cast<int64_t>(std::floor(pt.x / 0.05f));
             int64_t cy = static_cast<int64_t>(std::floor(pt.y / 0.05f));
             int64_t k = (cx << 32) | (cy & 0xFFFFFFFFLL);
@@ -60,16 +69,8 @@ int main(int argc, char** argv) {
     }
     auto t_u_end = std::chrono::high_resolution_clock::now();
     double uniform_latency_ms = std::chrono::duration<double, std::milli>(t_u_end - t_u_start).count();
+    // A flat uniform map stores one Cell per occupied key: exact, no overhead.
     double uniform_memory_mb = (uniform_cell_count * sizeof(ps26053::Cell)) / (1024.0 * 1024.0);
-
-    // --- MODE 2: ADAPTIVE VARIABLE RESOLUTION (PS26053 Dual-Level Architecture) ---
-    std::cout << "--- Running Mode 2: Adaptive Variable-Resolution (Dual-Level Architecture) ---\n";
-    ps26053::MappingPipeline adaptive_pipeline(model_path);
-    adaptive_pipeline.initialize();
-
-    auto metrics = adaptive_pipeline.processFrame(raw_scan, 0.0, 0);
-    size_t adaptive_cell_count = metrics.active_cells;
-    double adaptive_memory_mb = (adaptive_cell_count * sizeof(ps26053::Cell)) / (1024.0 * 1024.0);
 
     // --- BOUNDARY-ALIGNMENT QA VERIFICATION ---
     // Computed over every stored adaptive cell: overlapping 5 cm microcells
@@ -78,8 +79,10 @@ int main(int argc, char** argv) {
     size_t adaptive_boundary_errors = boundary_qa.totalErrors();
 
     // --- COMPARATIVE REPORT ---
+    // Signed percentages throughout: a negative value is a regression and is
+    // reported as such — never clamped, never relabeled.
     double cell_reduction_pct = 100.0 * (1.0 - double(adaptive_cell_count) / double(uniform_cell_count));
-    double memory_savings_pct = 100.0 * (1.0 - adaptive_memory_mb / uniform_memory_mb);
+    double memory_delta_pct = 100.0 * (1.0 - adaptive_memory_mb / uniform_memory_mb);
 
     std::cout << "\n==============================================================\n";
     std::cout << "       DIRECT UNIFORM vs ADAPTIVE COMPARATIVE BENCHMARK       \n";
@@ -87,15 +90,20 @@ int main(int argc, char** argv) {
     std::cout << std::fixed << std::setprecision(2);
     std::cout << " METRIC                     | UNIFORM BASELINE  | ADAPTIVE (OURS)   | GAIN\n";
     std::cout << "----------------------------+-------------------+-------------------+-----------\n";
+    std::cout << " Shared Input Points        | " << std::setw(17) << shared_cloud.size()
+              << " | " << std::setw(17) << shared_cloud.size() << " | identical\n";
     std::cout << " Active Stored Cells        | " << std::setw(17) << uniform_cell_count
               << " | " << std::setw(17) << adaptive_cell_count
               << " | " << cell_reduction_pct << "% fewer\n";
     std::cout << " Memory Footprint (MB)      | " << std::setw(14) << uniform_memory_mb << " MB"
               << " | " << std::setw(14) << adaptive_memory_mb << " MB"
-              << " | " << memory_savings_pct << "% saved\n";
+              << " | " << memory_delta_pct << "%\n";
+    std::cout << "  (uniform: flat Cells; adaptive: measured grid incl. nodes/overhead;\n";
+    std::cout << "   negative % means adaptive currently uses MORE memory — design issue, not a win)\n";
     std::cout << " Processing Latency (ms)    | " << std::setw(14) << uniform_latency_ms << " ms"
               << " | " << std::setw(14) << metrics.total_time_ms << " ms"
               << " | " << (metrics.fps) << " FPS\n";
+    std::cout << "  (uniform: key-counting only, not a full pipeline)\n";
     {
         size_t net = metrics.inference_network_points;
         size_t fb = metrics.inference_fallback_points;

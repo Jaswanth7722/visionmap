@@ -71,6 +71,18 @@ public:
      */
     BoundaryQA checkBoundaryAlignment() const;
 
+    /**
+     * @brief Measured memory footprint of the live grid in bytes.
+     *
+     * Sums exact sizeof terms (Quadtree objects, heap nodes, leaf Cells)
+     * plus a documented per-entry allowance for the unordered_map node
+     * itself (libstdc++: next pointer + key + value ≈ 24 B, plus malloc
+     * overhead; charged as 40 B and labeled approximate). Bucket-array
+     * storage is included exactly, as is the microcell ownership index
+     * that guarantees disjoint footprints. Used by the honest benchmark (C2).
+     */
+    size_t estimateMemoryBytes() const;
+
     const ResolutionPolicy& getResolutionPolicy() const { return policy_; }
 
 private:

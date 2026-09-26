@@ -270,6 +270,19 @@ size_t Grid25D::totalActiveCells() const {
     return count;
 }
 
+size_t Grid25D::estimateMemoryBytes() const {
+    constexpr size_t kMapNodeBytes = 40; // approximate per-entry node cost, see header
+    size_t total = sizeof(Grid25D) + tiles_.bucket_count() * sizeof(void*);
+    for (const auto& [key, tree] : tiles_) {
+        total += kMapNodeBytes + tree->memoryBytes();
+    }
+    // Microcell ownership index (the structure that guarantees disjoint
+    // footprints): bucket array exactly, entries approximately.
+    total += micro_owner_.bucket_count() * sizeof(void*) +
+             micro_owner_.size() * kMapNodeBytes;
+    return total;
+}
+
 bool Grid25D::exportToPLY(const std::string& filepath, bool occupied_only) const {
     std::vector<Cell> cells = getAllCells();
     std::vector<Cell> valid_cells;
