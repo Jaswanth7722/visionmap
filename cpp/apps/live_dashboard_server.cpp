@@ -128,9 +128,10 @@ public:
         std::cout << "==============================================================\n";
         std::cout << "  PS 26053: C++ NATIVE LIVE DASHBOARD SERVER ONLINE           \n";
         std::cout << "  URL: http://localhost:" << port_ << "/                       \n";
-        std::cout << "  Engine: Native C++17/20 | RAM: " << std::fixed << std::setprecision(1) 
-                  << getProcessRamMb() << " MB (vs Python ~1250 MB)\n";
-        std::cout << "  Camera: Real Hardware Only (Zero Mock Data)\n";
+        std::cout << "  Engine: Native C++17/20 | RAM: " << std::fixed << std::setprecision(1)
+                  << getProcessRamMb() << " MB (C++-only runtime, no Python)\n";
+        std::cout << "  Scans: " << seq_scans_.size() << " frame(s) from " << scan_arg_ << "\n";
+        std::cout << "  Camera: sensor frames accepted via POST /api/camera/upload\n";
         std::cout << "==============================================================\n";
 
         // Listen loop
@@ -449,6 +450,8 @@ private:
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"metrics\": {\n";
         ss << "    \"input_points\": " << raw_scan_.size() << ",\n";
+        ss << "    \"frame_index\": " << seq_index_ << ",\n";
+        ss << "    \"frame_count\": " << seq_scans_.size() << ",\n";
         ss << "    \"active_cells\": " << latest_metrics_.active_cells << ",\n";
         ss << "    \"active_tracks\": " << latest_metrics_.active_tracks << ",\n";
         ss << "    \"preprocess_time_ms\": " << latest_metrics_.preprocess_time_ms << ",\n";

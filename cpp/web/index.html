@@ -916,6 +916,17 @@
 
     <!-- Client-Side Real-Time Visualization & Three.js WebGL Engine -->
     <script>
+        // Global error surface: any uncaught UI exception lands in the
+        // runtime log with its message instead of failing silently (a silent
+        // handler once hid a dead button reference for weeks).
+        window.addEventListener('error', (e) => {
+            try {
+                if (typeof appendLog === 'function') {
+                    appendLog('Uncaught UI error: ' + (e && e.message ? e.message : e), 'warn');
+                }
+            } catch (_) {}
+        });
+
         // State variables
         let webcamStream = null;
         let isWebcamRunning = false;
@@ -1124,6 +1135,10 @@
         }
 
         btnRecenter3D.addEventListener('click', () => {
+            if (!camera || !controls) {
+                appendLog('Recenter unavailable: 3D engine down.', 'warn');
+                return;
+            }
             camera.position.set(-18, 22, -26);
             controls.target.set(0, 0, 10);
             controls.update();
@@ -1210,8 +1225,15 @@
                 }
 
                 updatePointsHud();
+                // Frame identity: with a single recorded scan the map is
+                // static BY CONSTRUCTION — this tag makes that explicit
+                // instead of mysterious (advance via POST /api/frame/next).
+                if (m.frame_index !== undefined && m.frame_count) {
+                    tagPointsCount.innerText += ` | frame ${m.frame_index + 1}/${m.frame_count}`;
+                }
                 if (activeTab === 'BEV') render2DGrid();
-                appendLog(`C++ pipeline: ${m.input_points.toLocaleString()} pts → ${lidarPoints.length.toLocaleString()} classified | ${m.active_tracks} tracks | ${m.active_cells.toLocaleString()} cells | ${m.total_time_ms.toFixed(1)} ms`, 'ok');
+                appendLog(`C++ pipeline: ${m.input_points.toLocaleString()} pts → ${lidarPoints.length.toLocaleString()} classified | ${m.active_tracks} tracks | ${m.active_cells.toLocaleString()} cells | ${m.total_time_ms.toFixed(1)} ms` +
+                    ((m.frame_index !== undefined && m.frame_count) ? ` | frame ${m.frame_index + 1}/${m.frame_count}` : ''), 'ok');
             } catch (err) {
                 const dot = document.getElementById('pipelineStatusDot');
                 if (dot) { dot.style.background = '#ef4444'; dot.style.boxShadow = 'none'; }
