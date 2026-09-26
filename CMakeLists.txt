@@ -136,6 +136,7 @@ set(TEST_TARGETS
     test_io
     test_config
     test_camera_ingest
+    test_photo_tracking
 )
 
 foreach(test_name ${TEST_TARGETS})

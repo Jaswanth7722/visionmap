@@ -107,6 +107,7 @@ bool loadAppConfig(const std::string& config_dir, AppConfig& out) {
             const YAML::Node cl = require<YAML::Node>(root, "tracking.yaml", "cluster_extraction");
             out.tracker.min_cluster_size = require<size_t>(cl, "tracking.yaml", "min_cluster_size");
             out.tracker.cluster_radius = require<float>(cl, "tracking.yaml", "cluster_tolerance");
+            out.tracker.max_cluster_width = require<float>(cl, "tracking.yaml", "max_cluster_width");
         }
     } catch (const std::exception& e) {
         std::cerr << "[Config] Failed to load runtime config from '" << config_dir

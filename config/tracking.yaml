@@ -23,3 +23,10 @@ kalman_filter:
 cluster_extraction:
   min_cluster_size: 15
   cluster_tolerance: 0.65  # meters (3D Euclidean link radius)
+  # Max lateral (Y) width of one dynamic object (meters, 0 disables). Rejects
+  # background sheets such as mislabeled monocular-depth image rows, which
+  # span the full image width while staying thin in depth. Road vehicles are
+  # narrow across the road (<3 m) even when long along it, so a 12 m bus
+  # still passes; known trade-off: a laterally-spread crowd wider than this
+  # is rejected too.
+  max_cluster_width: 6.0

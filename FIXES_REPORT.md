@@ -210,7 +210,9 @@ with an explicit `"source": "video-estimated-depth"` marker; the dashboard
 renders camera tracks (fuchsia), camera grid cells (class colors, fuchsia
 edge), and labeled table rows, keeping them visually and textually distinct
 from the metric LiDAR map they never merge into. Verified live: a car photo
-yields 2,592 network labels, 2,691 cells, 8 tracks at conf 0.5 in ~180 ms.
+yields 2,592 network labels and 2 compact tracks in ~180 ms (an earlier run
+showed 8 row-band phantoms at 9–19 m; the width gate below removed them —
+lateral axis, not depth, is the discriminating one).
 
 ## Addendum (2026-09-26): bundled sample dataset removed
 

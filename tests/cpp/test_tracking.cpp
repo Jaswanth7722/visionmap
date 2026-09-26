@@ -85,6 +85,23 @@ int main() {
         assert(vtr[0].bbox.max_x - vtr[0].bbox.min_x > 3.0f);
     }
 
+    // H1-width-gate: a 12 m wide (laterally) flat band — the shape of a
+    // mislabeled monocular-depth image row, which spans the image width —
+    // must not become a track, while the 4.5 m long vehicle above still does.
+    {
+        ps26053::KalmanTracker bt;
+        ps26053::PointCloud pts;
+        for (float y = 0.0f; y < 12.0f; y += 0.5f) {
+            ps26053::Point3D p;
+            p.x = 10.0f; p.y = y; p.z = 0.5f;
+            p.semantic_class = ps26053::SemanticClass::DYNAMIC_OBSTACLE;
+            pts.push_back(p);
+        }
+        assert(pts.size() >= 15);
+        bt.update(pts, 0.0);
+        assert(bt.getActiveTracks().empty());
+    }
+
     std::cout << "[Test PASS] test_tracking succeeded!\n";
     return 0;
 }

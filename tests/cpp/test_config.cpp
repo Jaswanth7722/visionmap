@@ -48,6 +48,7 @@ int main() {
     assert(cfg.tracker.min_hits_to_confirm == 3);
     assert(cfg.tracker.min_cluster_size == 15);
     assert(std::fabs(cfg.tracker.cluster_radius - 0.65f) < 1e-6f);
+    assert(std::fabs(cfg.tracker.max_cluster_width - 6.0f) < 1e-6f);
 
     // Missing directory must fail loudly, never silently use defaults.
     ps26053::AppConfig bad;

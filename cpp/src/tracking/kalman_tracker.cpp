@@ -156,6 +156,17 @@ std::vector<DynamicCluster> KalmanTracker::clusterDynamicPoints(const PointCloud
 
     for (const auto& [root, bbox] : boxes) {
         if (counts[root] >= kMinClusterPoints) {
+            // Object-size prior: reject components wider (laterally, Y) than
+            // any plausible single dynamic object (see
+            // TrackerConfig::max_cluster_width). Width is measured laterally
+            // because that is the axis on which background sheets appear:
+            // monocular-projected frames quantize depth per image row, so a
+            // mislabeled row becomes a band spanning the full image width
+            // while staying thin in depth (X).
+            if (config_.max_cluster_width > 0.0f &&
+                (bbox.max_y - bbox.min_y) > config_.max_cluster_width) {
+                continue;
+            }
             DynamicCluster cluster;
             cluster.bbox = bbox;
             cluster.mean_z = static_cast<float>(sum_z[root] / static_cast<double>(counts[root]));
