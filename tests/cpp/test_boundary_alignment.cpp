@@ -70,6 +70,29 @@ int main() {
     assert(grid2.totalActiveCells() == grid.totalActiveCells());
     assert(grid2.checkBoundaryAlignment().totalErrors() == 0);
 
+    // C10: the live importance engine (not a hardcoded class check) drives
+    // refinement. Two low-confidence dynamic points 0.5 m apart in z at
+    // ~20 m give importance ~= 0.17 (proximity) + 0.25 (dynamic) + 0.20
+    // (curb-range clearance, second point only) + 0.10 (uncertain): the first
+    // point scores ~0.52 and must NOT refine, the second scores ~0.72 and
+    // must. The refined cell records its importance on every child.
+    {
+        ps26053::Grid25D g3;
+        ps26053::PointCloud c2;
+        c2.push_back(makePt(20.0f, 0.0f, -1.0f, ps26053::SemanticClass::DYNAMIC_OBSTACLE));
+        c2.push_back(makePt(20.0f, 0.0f, -0.5f, ps26053::SemanticClass::DYNAMIC_OBSTACLE));
+        // Lower confidence below the 0.70 uncertainty trigger.
+        c2[0].confidence = 0.5f;
+        c2[1].confidence = 0.5f;
+        g3.updateWithPointCloud(c2, 0.0);
+        auto leaves = g3.getAllCells();
+        assert(leaves.size() == 4); // one base cell refined into four children
+        for (const auto& cell : leaves) {
+            assert(cell.importance > 0.0f);
+        }
+        assert(g3.checkBoundaryAlignment().totalErrors() == 0);
+    }
+
     std::cout << "[Test PASS] test_boundary_alignment succeeded!\n";
     return 0;
 }

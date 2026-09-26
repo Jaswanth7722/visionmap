@@ -46,9 +46,7 @@ void Grid25D::updateWithPointCloud(const PointCloud& cloud, double timestamp, co
             auto ot = tiles_.find(owner->second);
             if (ot != tiles_.end()) {
                 ot->second->insertPoint(pt, timestamp);
-                if (pt.semantic_class == SemanticClass::DYNAMIC_OBSTACLE) {
-                    ot->second->refineCellAt(pt.x, pt.y);
-                }
+                refineByImportance(*ot->second, pt, sensor_pos);
             }
             continue;
         }
@@ -114,10 +112,21 @@ void Grid25D::updateWithPointCloud(const PointCloud& cloud, double timestamp, co
         // Insert point
         it->second->insertPoint(pt, timestamp);
 
-        // Check Level-2 refinement trigger
-        if (pt.semantic_class == SemanticClass::DYNAMIC_OBSTACLE) {
-            it->second->refineCellAt(pt.x, pt.y);
-        }
+        // Level-2 refinement driven by the real importance engine
+        // (distance + motion + semantics), not a hardcoded class check.
+        refineByImportance(*it->second, pt, sensor_pos);
+    }
+}
+
+void Grid25D::refineByImportance(Quadtree& tree, const Point3D& pt, const Eigen::Vector3f& sensor_pos) {
+    Cell* leaf = tree.findLeaf(pt.x, pt.y);
+    if (!leaf) return;
+
+    float dist = std::hypot(leaf->bounds.centerX() - sensor_pos.x(),
+                            leaf->bounds.centerY() - sensor_pos.y());
+    leaf->importance = policy_.computeImportance(*leaf, dist);
+    if (policy_.shouldRefine(*leaf, dist)) {
+        tree.refineCellAt(pt.x, pt.y);
     }
 }
 

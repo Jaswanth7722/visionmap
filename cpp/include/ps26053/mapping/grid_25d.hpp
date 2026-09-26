@@ -95,6 +95,10 @@ private:
 
     std::pair<int, int> getTileIndices(float x, float y) const;
 
+    // Level-2 refinement for one observation, driven by the importance
+    // engine (distance + motion + semantic relevance).
+    void refineByImportance(Quadtree& tree, const Point3D& pt, const Eigen::Vector3f& sensor_pos);
+
     std::unordered_map<int64_t, std::unique_ptr<Quadtree>> tiles_;
 
     // Microcell ownership: 5 cm lattice key -> base-cell key. Every occupied

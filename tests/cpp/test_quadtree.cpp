@@ -1,5 +1,6 @@
 #include "ps26053/mapping/quadtree.hpp"
 #include <cassert>
+#include <cmath>
 #include <iostream>
 
 int main() {
@@ -83,6 +84,27 @@ int main() {
         }
         assert(found_tall && found_ground); // children genuinely differ
         assert(total_pts == 2);             // no observation dropped
+    }
+
+    // C10: refineCellAt must descend past the root to the target cell.
+    {
+        ps26053::Quadtree deep({0.0f, 1.0f, 0.0f, 1.0f}, 1.0f, 3);
+        assert(deep.totalCells() == 1);
+        deep.refineCellAt(0.7f, 0.7f);
+        assert(deep.totalCells() == 4);   // root subdivided
+        deep.refineCellAt(0.7f, 0.7f);
+        assert(deep.totalCells() == 7);   // target child subdivided, not the root again
+        deep.refineCellAt(0.7f, 0.7f);
+        assert(deep.totalCells() == 10);  // third level reached (max_depth = 3)
+        deep.refineCellAt(0.7f, 0.7f);
+        assert(deep.totalCells() == 10);  // depth cap holds: no further subdivision
+
+        // findLeaf locates the leaf that owns a point.
+        ps26053::Cell* leaf = deep.findLeaf(0.7f, 0.7f);
+        assert(leaf != nullptr);
+        assert(leaf->bounds.contains(0.7f, 0.7f));
+        assert(std::abs(leaf->resolution - 0.125f) < 1e-6f);
+        assert(deep.findLeaf(5.0f, 5.0f) == nullptr);
     }
 
     std::cout << "[Test PASS] test_quadtree succeeded!\n";

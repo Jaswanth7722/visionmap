@@ -42,6 +42,34 @@ void QuadtreeNode::insertPoint(const Point3D& pt, double timestamp) {
     }
 }
 
+void QuadtreeNode::refineAt(float x, float y, int max_depth) {
+    if (!bounds_.contains(x, y)) return;
+
+    if (isLeaf()) {
+        subdivide();
+        return;
+    }
+    // A node at depth max_depth - 1 already holds the finest allowed cells.
+    if (depth_ + 1 >= max_depth) return;
+    int idx = getChildIndex(x, y);
+    if (children_[idx]) {
+        children_[idx]->refineAt(x, y, max_depth);
+    }
+}
+
+Cell* QuadtreeNode::findLeaf(float x, float y) {
+    if (!bounds_.contains(x, y)) return nullptr;
+
+    if (isLeaf()) {
+        return &cell_;
+    }
+    int idx = getChildIndex(x, y);
+    if (children_[idx]) {
+        return children_[idx]->findLeaf(x, y);
+    }
+    return nullptr;
+}
+
 void QuadtreeNode::getAllLeaves(std::vector<const Cell*>& out_cells) const {
     if (isLeaf()) {
         out_cells.push_back(&cell_);
@@ -91,22 +119,12 @@ void Quadtree::insertPoint(const Point3D& pt, double timestamp) {
 
 void Quadtree::refineCellAt(float x, float y) {
     if (!root_ || !bounds_.contains(x, y)) return;
+    root_->refineAt(x, y, max_depth_);
+}
 
-    QuadtreeNode* curr = root_.get();
-    while (curr && curr->getDepth() < max_depth_) {
-        if (curr->isLeaf()) {
-            curr->subdivide();
-            break;
-        }
-        // Descend to child containing point
-        float mid_x = curr->getCell().bounds.centerX();
-        float mid_y = curr->getCell().bounds.centerY();
-        int idx = 0;
-        if (x >= mid_x) idx |= 1;
-        if (y >= mid_y) idx |= 2;
-        curr = (idx >= 0 && idx < 4) ? curr : nullptr; // will traverse child next loop
-        break;
-    }
+Cell* Quadtree::findLeaf(float x, float y) {
+    if (!root_ || !bounds_.contains(x, y)) return nullptr;
+    return root_->findLeaf(x, y);
 }
 
 std::vector<const Cell*> Quadtree::getActiveCells() const {

@@ -14,6 +14,8 @@ public:
     bool isLeaf() const { return children_[0] == nullptr; }
     void subdivide();
     void insertPoint(const Point3D& pt, double timestamp);
+    void refineAt(float x, float y, int max_depth);
+    Cell* findLeaf(float x, float y);
 
     Cell& getCell() { return cell_; }
     const Cell& getCell() const { return cell_; }
@@ -40,6 +42,7 @@ public:
 
     void insertPoint(const Point3D& pt, double timestamp);
     void refineCellAt(float x, float y);
+    Cell* findLeaf(float x, float y);
 
     std::vector<const Cell*> getActiveCells() const;
     std::vector<Cell*> getActiveCellsMutable();
