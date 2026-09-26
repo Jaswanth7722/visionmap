@@ -98,7 +98,8 @@ void Grid25D::updateWithPointCloud(const PointCloud& cloud, double timestamp, co
             float cell_max_y = cell_min_y + (k > 0 ? static_cast<float>(k) * q : base_res);
 
             BoundingBox2D cell_bounds{cell_min_x, cell_max_x, cell_min_y, cell_max_y};
-            auto tree = std::make_unique<Quadtree>(cell_bounds, k > 0 ? static_cast<float>(k) * q : base_res);
+            auto tree = std::make_unique<Quadtree>(
+                cell_bounds, k > 0 ? static_cast<float>(k) * q : base_res, config_.max_depth);
             it = tiles_.emplace(key, std::move(tree)).first;
 
             if (k > 0) {
