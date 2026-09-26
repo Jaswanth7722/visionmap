@@ -1,0 +1,14 @@
+{
+  "frame_index": 1,
+  "scan_path": "data/raw/sequences/00/velodyne/SYNTHETIC_000000.bin",
+  "data_source": "SYNTHETIC",
+  "point_counts": 1024,
+  "active_cells": 43974,
+  "active_tracks": 3,
+  "boundary_errors": 0,
+  "memory_mb": 0.0,
+  "latency_ms": 184.78,
+  "fps": 5.41,
+  "inference_network_points": 1003,
+  "inference_fallback_points": 0
+}

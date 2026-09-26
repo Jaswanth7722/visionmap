@@ -1,0 +1,27 @@
+{
+  "WARNING": "SYNTHETIC frames -- pipeline smoke-test ONLY, not real data",
+  "purpose": "Validate multi-frame ingestion loop, temporal fusion, PLY export",
+  "real_data_source": "https://www.semantic-kitti.org/dataset.html (seq 00)",
+  "synthetic_frames": [
+    "SYNTHETIC_000000.bin",
+    "SYNTHETIC_000001.bin",
+    "SYNTHETIC_000002.bin",
+    "SYNTHETIC_000003.bin",
+    "SYNTHETIC_000004.bin",
+    "SYNTHETIC_000005.bin",
+    "SYNTHETIC_000006.bin",
+    "SYNTHETIC_000007.bin",
+    "SYNTHETIC_000008.bin",
+    "SYNTHETIC_000009.bin",
+    "SYNTHETIC_000010.bin",
+    "SYNTHETIC_000011.bin",
+    "SYNTHETIC_000012.bin",
+    "SYNTHETIC_000013.bin",
+    "SYNTHETIC_000014.bin",
+    "SYNTHETIC_000015.bin",
+    "SYNTHETIC_000016.bin",
+    "SYNTHETIC_000017.bin",
+    "SYNTHETIC_000018.bin",
+    "SYNTHETIC_000019.bin"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "frame_index": 0,
+  "scan_path": "data/raw/sequences/00/velodyne/000000.bin",
+  "data_source": "REAL",
+  "point_counts": 106385,
+  "active_cells": 43071,
+  "active_tracks": 3,
+  "boundary_errors": 0,
+  "memory_mb": 0.0,
+  "latency_ms": 3507.52,
+  "fps": 0.29,
+  "inference_network_points": 58784,
+  "inference_fallback_points": 0
+}
