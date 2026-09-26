@@ -17,6 +17,14 @@ public:
     ResolutionPolicy();
 
     /**
+     * @brief Finest alignment quantum in meters. Every stored cell edge lies on
+     * the global lattice anchored at the grid origin with this step, so cells
+     * from different distance bands share exact edges instead of overlapping.
+     * All default band sizes are exact integer multiples of this quantum.
+     */
+    static constexpr float alignmentQuantum() { return 0.05f; }
+
+    /**
      * @brief Level 1 — PS baseline policy: get base resolution purely by distance from sensor.
      * 0–10 m  -> 5 cm
      * 10–30 m -> 15 cm
@@ -24,6 +32,13 @@ public:
      * 60–100 m -> 50 cm
      */
     float getBaseResolution(float distance) const;
+
+    /**
+     * @brief Integer multiple of the alignment quantum for a band resolution.
+     * @return k such that resolution == k * alignmentQuantum(), or -1 when the
+     * resolution is not an exact multiple (custom bands added at runtime).
+     */
+    int quantumMultiple(float resolution) const;
 
     /**
      * @brief Level 2 — Project innovation: semantic importance + motion trigger local refinement

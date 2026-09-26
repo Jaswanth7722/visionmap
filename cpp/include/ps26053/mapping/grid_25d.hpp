@@ -17,6 +17,22 @@ struct GridConfig {
     float tile_size{1.0f}; // 1.0 meter master tile
 };
 
+/**
+ * @brief Result of the boundary-alignment QA check (architecture spec, section 7).
+ *
+ * This is computed from the actual stored cells every time it is requested:
+ * overlapping_quanta counts 5 cm lattice microcells covered by more than one
+ * stored cell footprint, and misaligned_cells counts cells whose stored width
+ * or height disagrees with their stored resolution. It must never be replaced
+ * by a hardcoded constant at any reporting surface.
+ */
+struct BoundaryQA {
+    size_t overlapping_quanta{0};
+    size_t misaligned_cells{0};
+    size_t checked_cells{0};
+    size_t totalErrors() const { return overlapping_quanta + misaligned_cells; }
+};
+
 class Grid25D {
 public:
     explicit Grid25D(const GridConfig& config = GridConfig());
@@ -50,20 +66,45 @@ public:
     size_t totalActiveCells() const;
     size_t totalAllocatedTiles() const { return tiles_.size(); }
 
+    /**
+     * @brief Compute boundary-alignment errors over the stored cells.
+     */
+    BoundaryQA checkBoundaryAlignment() const;
+
     const ResolutionPolicy& getResolutionPolicy() const { return policy_; }
 
 private:
     GridConfig config_;
     ResolutionPolicy policy_;
 
-    // Master tile hash key: (tile_ix, tile_iy)
-    int64_t tileKey(int ix, int iy) const {
-        return (static_cast<int64_t>(ix) << 32) | (static_cast<int64_t>(iy) & 0xFFFFFFFFLL);
+    // Deterministic cell key: quantum multiple tag + cell indices at that
+    // resolution. The tag keeps identically indexed cells from different
+    // distance bands distinct instead of aliasing them into one quadtree.
+    static int64_t cellKey(int quantum_multiple, int cx, int cy) {
+        return (static_cast<int64_t>(quantum_multiple) << 56) |
+               ((static_cast<int64_t>(cx) & 0xFFFFFFLL) << 28) |
+               (static_cast<int64_t>(cy) & 0xFFFFFFLL);
+    }
+
+    static int floorDiv(int a, int b) {
+        int q = a / b;
+        int r = a % b;
+        if ((r != 0) && ((r < 0) != (b < 0))) --q;
+        return q;
     }
 
     std::pair<int, int> getTileIndices(float x, float y) const;
 
     std::unordered_map<int64_t, std::unique_ptr<Quadtree>> tiles_;
+
+    // Microcell ownership: 5 cm lattice key -> base-cell key. Every occupied
+    // microcell has exactly one owner, so a new base cell is only ever
+    // created over free microcells and stored footprints cannot overlap.
+    std::unordered_map<int64_t, int64_t> micro_owner_;
+
+    static int64_t microKey(int mx, int my) {
+        return (static_cast<int64_t>(mx) << 32) | (static_cast<int64_t>(my) & 0xFFFFFFFFLL);
+    }
 };
 
 } // namespace ps26053

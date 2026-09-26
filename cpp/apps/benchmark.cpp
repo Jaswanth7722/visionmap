@@ -3,7 +3,18 @@
 #include <iostream>
 #include <iomanip>
 #include <chrono>
+#include <string>
 #include <unordered_set>
+
+namespace {
+// The verdict is derived from the measured adaptive error count, never
+// hardcoded: any nonzero count is reported as a failure. The uniform column
+// is n/a because Mode 1 counts occupied keys without materializing stored
+// cells, so there is no stored-cell geometry to check.
+std::string boundaryVerdict(size_t adaptive_errors) {
+    return (adaptive_errors == 0) ? "0 Errors (PASS)" : "NONZERO (FAIL)";
+}
+} // namespace
 
 int main(int argc, char** argv) {
     std::cout << "==============================================================\n";
@@ -61,16 +72,10 @@ int main(int argc, char** argv) {
     double adaptive_memory_mb = (adaptive_cell_count * sizeof(ps26053::Cell)) / (1024.0 * 1024.0);
 
     // --- BOUNDARY-ALIGNMENT QA VERIFICATION ---
-    // Check for gaps or overlaps between adjacent cells
-    int boundary_alignment_errors = 0;
-    auto cells = adaptive_pipeline.getGrid().getAllCells();
-    for (size_t i = 0; i < std::min(size_t(500), cells.size()); ++i) {
-        float r = cells[i].resolution;
-        float w = cells[i].bounds.width();
-        if (std::abs(r - w) > 1e-4) {
-            boundary_alignment_errors++;
-        }
-    }
+    // Computed over every stored adaptive cell: overlapping 5 cm microcells
+    // plus cells whose stored width disagrees with their stored resolution.
+    ps26053::BoundaryQA boundary_qa = adaptive_pipeline.getGrid().checkBoundaryAlignment();
+    size_t adaptive_boundary_errors = boundary_qa.totalErrors();
 
     // --- COMPARATIVE REPORT ---
     double cell_reduction_pct = 100.0 * (1.0 - double(adaptive_cell_count) / double(uniform_cell_count));
@@ -91,9 +96,16 @@ int main(int argc, char** argv) {
     std::cout << " Processing Latency (ms)    | " << std::setw(14) << uniform_latency_ms << " ms"
               << " | " << std::setw(14) << metrics.total_time_ms << " ms"
               << " | " << (metrics.fps) << " FPS\n";
-    std::cout << " Boundary Alignment Errors  | " << std::setw(17) << 0
-              << " | " << std::setw(17) << boundary_alignment_errors
-              << " | 0 Errors (PASS)\n";
+    std::cout << " Boundary Alignment Errors  | " << std::setw(17) << "n/a"
+              << " | " << std::setw(17) << adaptive_boundary_errors
+              << " | " << boundaryVerdict(adaptive_boundary_errors) << "\n";
+    std::cout << " QA Cells Checked           | " << std::setw(17) << uniform_cell_count
+              << " | " << std::setw(17) << boundary_qa.checked_cells << "\n";
+    std::cout << "  (of which overlapping)    | " << std::setw(17) << "n/a"
+              << " | " << std::setw(17) << boundary_qa.overlapping_quanta << "\n";
+    std::cout << "  (of which misaligned)     | " << std::setw(17) << "n/a"
+              << " | " << std::setw(17) << boundary_qa.misaligned_cells << "\n";
+    std::cout << "  (n/a: uniform mode counts occupied keys; it stores no cells to check)\n";
     std::cout << "==============================================================\n";
 
     return 0;

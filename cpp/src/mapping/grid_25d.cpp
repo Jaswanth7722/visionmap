@@ -2,6 +2,7 @@
 #include <fstream>
 #include <cmath>
 #include <iostream>
+#include <unordered_set>
 
 namespace ps26053 {
 
@@ -14,29 +15,100 @@ std::pair<int, int> Grid25D::getTileIndices(float x, float y) const {
 }
 
 void Grid25D::updateWithPointCloud(const PointCloud& cloud, double timestamp, const Eigen::Vector3f& sensor_pos) {
+    constexpr float q = ResolutionPolicy::alignmentQuantum();
+
     for (const auto& pt : cloud) {
         if (pt.x < config_.x_min || pt.x >= config_.x_max ||
             pt.y < config_.y_min || pt.y >= config_.y_max) {
             continue;
         }
 
-        float dist = std::hypot(pt.x - sensor_pos.x(), pt.y - sensor_pos.y());
-        float base_res = policy_.getBaseResolution(dist);
+        // Deterministic point-to-cell mapping (alignment rule 3): quantize the
+        // point to the shared 5 cm microcell lattice first, then select the
+        // distance band from the microcell centre. Every point inside one
+        // microcell therefore maps to the same band cell, and every stored
+        // cell is an exact union of microcells, so stored footprints from
+        // different bands are disjoint by construction.
+        int mx = static_cast<int>(std::floor((pt.x - config_.x_min) / q));
+        int my = static_cast<int>(std::floor((pt.y - config_.y_min) / q));
+        float mcx = config_.x_min + (static_cast<float>(mx) + 0.5f) * q;
+        float mcy = config_.y_min + (static_cast<float>(my) + 0.5f) * q;
 
-        int ix = static_cast<int>(std::floor((pt.x - config_.x_min) / base_res));
-        int iy = static_cast<int>(std::floor((pt.y - config_.y_min) / base_res));
-        int64_t key = tileKey(ix, iy);
+        float dist = std::hypot(mcx - sensor_pos.x(), mcy - sensor_pos.y());
+        float base_res = policy_.getBaseResolution(dist);
+        int k = policy_.quantumMultiple(base_res);
+
+        int64_t mkey = microKey(mx, my);
+        auto owner = micro_owner_.find(mkey);
+        if (owner != micro_owner_.end()) {
+            // This microcell already belongs to a stored cell: route the
+            // point into its owner instead of allocating an overlapping cell.
+            auto ot = tiles_.find(owner->second);
+            if (ot != tiles_.end()) {
+                ot->second->insertPoint(pt, timestamp);
+                if (pt.semantic_class == SemanticClass::DYNAMIC_OBSTACLE) {
+                    ot->second->refineCellAt(pt.x, pt.y);
+                }
+            }
+            continue;
+        }
+
+        int cx, cy;
+        float cell_min_x, cell_min_y;
+        if (k > 0) {
+            cx = floorDiv(mx, k);
+            cy = floorDiv(my, k);
+            cell_min_x = config_.x_min + static_cast<float>(cx * k) * q;
+            cell_min_y = config_.y_min + static_cast<float>(cy * k) * q;
+        } else {
+            // Custom non-multiple band: fall back to per-point indexing, but
+            // keep the resolution tag in the key so bands cannot alias.
+            k = 0;
+            cx = static_cast<int>(std::floor((pt.x - config_.x_min) / base_res));
+            cy = static_cast<int>(std::floor((pt.y - config_.y_min) / base_res));
+            cell_min_x = config_.x_min + static_cast<float>(cx) * base_res;
+            cell_min_y = config_.y_min + static_cast<float>(cy) * base_res;
+        }
+
+        if (k > 0) {
+            // Refuse to allocate over microcells owned by another band's
+            // cells. Contested microcells degrade gracefully to a single
+            // quantum cell covering exactly this free microcell.
+            bool contested = false;
+            for (int ix = cx * k; ix < cx * k + k && !contested; ++ix) {
+                for (int iy = cy * k; iy < cy * k + k; ++iy) {
+                    if (micro_owner_.find(microKey(ix, iy)) != micro_owner_.end()) {
+                        contested = true;
+                        break;
+                    }
+                }
+            }
+            if (contested) {
+                k = 1;
+                cx = mx;
+                cy = my;
+                cell_min_x = config_.x_min + static_cast<float>(cx) * q;
+                cell_min_y = config_.y_min + static_cast<float>(cy) * q;
+            }
+        }
+        int64_t key = cellKey(k, cx, cy);
 
         auto it = tiles_.find(key);
         if (it == tiles_.end()) {
-            float cell_min_x = config_.x_min + ix * base_res;
-            float cell_max_x = cell_min_x + base_res;
-            float cell_min_y = config_.y_min + iy * base_res;
-            float cell_max_y = cell_min_y + base_res;
+            float cell_max_x = cell_min_x + (k > 0 ? static_cast<float>(k) * q : base_res);
+            float cell_max_y = cell_min_y + (k > 0 ? static_cast<float>(k) * q : base_res);
 
             BoundingBox2D cell_bounds{cell_min_x, cell_max_x, cell_min_y, cell_max_y};
-            auto tree = std::make_unique<Quadtree>(cell_bounds, base_res);
+            auto tree = std::make_unique<Quadtree>(cell_bounds, k > 0 ? static_cast<float>(k) * q : base_res);
             it = tiles_.emplace(key, std::move(tree)).first;
+
+            if (k > 0) {
+                for (int ix = cx * k; ix < cx * k + k; ++ix) {
+                    for (int iy = cy * k; iy < cy * k + k; ++iy) {
+                        micro_owner_.emplace(microKey(ix, iy), key);
+                    }
+                }
+            }
         }
 
         // Insert point
@@ -47,6 +119,63 @@ void Grid25D::updateWithPointCloud(const PointCloud& cloud, double timestamp, co
             it->second->refineCellAt(pt.x, pt.y);
         }
     }
+}
+
+BoundaryQA Grid25D::checkBoundaryAlignment() const {
+    constexpr float q = ResolutionPolicy::alignmentQuantum();
+    constexpr float eps = 1e-4f;
+    // Strict interior intersection epsilon: shared edges must NOT count as
+    // overlap, so this is far above float rounding noise but far below any
+    // real cell dimension.
+    constexpr float overlap_eps = 1e-6f;
+    BoundaryQA qa;
+
+    auto cells = getAllCells();
+    qa.checked_cells = cells.size();
+
+    auto interiorsIntersect = [&](const Cell& a, const Cell& b) {
+        return (a.bounds.min_x < b.bounds.max_x - overlap_eps &&
+                b.bounds.min_x < a.bounds.max_x - overlap_eps &&
+                a.bounds.min_y < b.bounds.max_y - overlap_eps &&
+                b.bounds.min_y < a.bounds.max_y - overlap_eps);
+    };
+
+    // Microcell rasterization finds candidate collisions cheaply; each
+    // candidate pair is then verified against the exact stored footprints so
+    // that refined children sharing only an edge are never miscounted.
+    std::unordered_map<int64_t, size_t> owner;
+    owner.reserve(cells.size() * 4);
+
+    for (size_t ci = 0; ci < cells.size(); ++ci) {
+        const auto& c = cells[ci];
+        float w = c.bounds.width();
+        float h = c.bounds.height();
+        if (std::fabs(w - c.resolution) > eps || std::fabs(h - c.resolution) > eps) {
+            ++qa.misaligned_cells;
+            continue;
+        }
+
+        // Half-open microcell range covered by this footprint.
+        int x0 = static_cast<int>(std::floor((c.bounds.min_x - config_.x_min) / q + eps));
+        int x1 = static_cast<int>(std::ceil((c.bounds.max_x - config_.x_min) / q - eps)) - 1;
+        int y0 = static_cast<int>(std::floor((c.bounds.min_y - config_.y_min) / q + eps));
+        int y1 = static_cast<int>(std::ceil((c.bounds.max_y - config_.y_min) / q - eps)) - 1;
+
+        for (int ix = x0; ix <= x1; ++ix) {
+            for (int iy = y0; iy <= y1; ++iy) {
+                int64_t key = (static_cast<int64_t>(ix) << 32) |
+                              (static_cast<int64_t>(iy) & 0xFFFFFFFFLL);
+                auto it = owner.find(key);
+                if (it == owner.end()) {
+                    owner.emplace(key, ci);
+                } else if (it->second != ci && interiorsIntersect(cells[it->second], c)) {
+                    ++qa.overlapping_quanta;
+                }
+            }
+        }
+    }
+
+    return qa;
 }
 
 void Grid25D::updateTrackedObjects(const std::vector<TrackedObject>& tracks) {

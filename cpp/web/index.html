@@ -678,7 +678,7 @@
             </div>
             <div class="hud-pill">
                 <span class="hud-label">GAPS</span>
-                <span class="hud-value green">0.00 mm</span>
+                <span class="hud-value" id="hudGaps">—</span>
             </div>
         </div>
     </header>
@@ -1113,6 +1113,17 @@
                 hudLatency.innerText     = `${m.inference_time_ms.toFixed(1)} ms`;
                 hudTotalLatency.innerText= `${m.total_time_ms.toFixed(1)} ms`;
                 hudFps.innerText         = `${m.fps.toFixed(2)} Hz`;
+
+                // Boundary QA comes from the live C++ grid check on every
+                // response. 'n/a' is shown when the backend predates the
+                // boundary_errors field — never a hardcoded zero.
+                const hudGaps = document.getElementById('hudGaps');
+                if (hudGaps) {
+                    const be = (m.boundary_errors === undefined || m.boundary_errors === null)
+                        ? null : m.boundary_errors;
+                    hudGaps.innerText = (be === null) ? 'n/a' : `${be} errors`;
+                    hudGaps.className = 'hud-value ' + (be === null ? '' : (be === 0 ? 'green' : 'amber'));
+                }
 
                 document.getElementById('valRawPoints').innerText      = m.input_points.toLocaleString();
                 document.getElementById('valActiveCells').innerText    = m.active_cells.toLocaleString();

@@ -25,6 +25,16 @@ float ResolutionPolicy::getBaseResolution(float distance) const {
     return bands_.empty() ? 0.50f : bands_.back().cell_size;
 }
 
+int ResolutionPolicy::quantumMultiple(float resolution) const {
+    constexpr float q = 0.05f;
+    float m = resolution / q;
+    int k = static_cast<int>(std::lround(m));
+    if (k < 1 || std::fabs(m - static_cast<float>(k)) > 1e-4f) {
+        return -1;
+    }
+    return k;
+}
+
 float ResolutionPolicy::computeImportance(const Cell& cell, float distance_to_sensor) const {
     float importance = 0.0f;
 

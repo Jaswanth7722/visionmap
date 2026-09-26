@@ -126,6 +126,7 @@ set(TEST_TARGETS
     test_projection
     test_tracking
     test_temporal_fusion
+    test_boundary_alignment
 )
 
 foreach(test_name ${TEST_TARGETS})

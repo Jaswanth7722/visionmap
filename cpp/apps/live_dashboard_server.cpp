@@ -308,7 +308,8 @@ private:
         ss << "  \"mapping_time_ms\": " << latest_metrics_.mapping_time_ms << ",\n";
         ss << "  \"total_latency_ms\": " << latest_metrics_.total_time_ms << ",\n";
         ss << "  \"fps\": " << latest_metrics_.fps << ",\n";
-        ss << "  \"boundary_errors\": 0\n";
+        // Computed from the live grid on every request — never a constant.
+        ss << "  \"boundary_errors\": " << pipeline_->getGrid().checkBoundaryAlignment().totalErrors() << "\n";
         ss << "}";
 
         sendResponse(sock, 200, "application/json", ss.str());
@@ -415,6 +416,8 @@ private:
         ss << "    \"mapping_time_ms\": " << latest_metrics_.mapping_time_ms << ",\n";
         ss << "    \"total_time_ms\": " << latest_metrics_.total_time_ms << ",\n";
         ss << "    \"fps\": " << latest_metrics_.fps << ",\n";
+        // Computed from the live grid on every request — never a constant.
+        ss << "    \"boundary_errors\": " << pipeline_->getGrid().checkBoundaryAlignment().totalErrors() << ",\n";
         ss << "    \"ram_mb\": " << getProcessRamMb() << "\n";
         ss << "  },\n";
 
