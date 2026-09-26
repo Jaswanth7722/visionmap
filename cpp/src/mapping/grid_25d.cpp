@@ -2,6 +2,7 @@
 #include <fstream>
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 #include <unordered_set>
 
 namespace ps26053 {
@@ -151,7 +152,16 @@ BoundaryQA Grid25D::checkBoundaryAlignment() const {
 
     // Microcell rasterization finds candidate collisions cheaply; each
     // candidate pair is then verified against the exact stored footprints so
-    // that refined children sharing only an edge are never miscounted.
+    // that cells sharing only an edge are never miscounted.
+    //
+    // NOTE: micro indices are computed in double precision. In float32 the
+    // quotient (coord - origin) / quantum is O(1000) with only ~7 decimal
+    // digits, i.e. absolute rounding noise up to ~1e-4 — the same scale as
+    // the eps margin, which made the check blind. Double precision keeps the
+    // index error at ~1e-13, far below eps.
+    const double qd = static_cast<double>(q);
+    const double x_origin = static_cast<double>(config_.x_min);
+    const double y_origin = static_cast<double>(config_.y_min);
     std::unordered_map<int64_t, size_t> owner;
     owner.reserve(cells.size() * 4);
 
@@ -165,10 +175,10 @@ BoundaryQA Grid25D::checkBoundaryAlignment() const {
         }
 
         // Half-open microcell range covered by this footprint.
-        int x0 = static_cast<int>(std::floor((c.bounds.min_x - config_.x_min) / q + eps));
-        int x1 = static_cast<int>(std::ceil((c.bounds.max_x - config_.x_min) / q - eps)) - 1;
-        int y0 = static_cast<int>(std::floor((c.bounds.min_y - config_.y_min) / q + eps));
-        int y1 = static_cast<int>(std::ceil((c.bounds.max_y - config_.y_min) / q - eps)) - 1;
+        int x0 = static_cast<int>(std::floor((static_cast<double>(c.bounds.min_x) - x_origin) / qd + eps));
+        int x1 = static_cast<int>(std::ceil((static_cast<double>(c.bounds.max_x) - x_origin) / qd - eps)) - 1;
+        int y0 = static_cast<int>(std::floor((static_cast<double>(c.bounds.min_y) - y_origin) / qd + eps));
+        int y1 = static_cast<int>(std::ceil((static_cast<double>(c.bounds.max_y) - y_origin) / qd - eps)) - 1;
 
         for (int ix = x0; ix <= x1; ++ix) {
             for (int iy = y0; iy <= y1; ++iy) {
@@ -273,6 +283,11 @@ bool Grid25D::exportToPLY(const std::string& filepath, bool occupied_only) const
 
     std::ofstream out(filepath);
     if (!out.is_open()) return false;
+
+    // Full float precision: the default 6 significant digits would quantize
+    // coordinates to 1e-4 at these magnitudes and fabricate apparent
+    // boundary overlaps in the artifact.
+    out << std::setprecision(10);
 
     out << "ply\n";
     out << "format ascii 1.0\n";

@@ -1,6 +1,7 @@
 #include "ps26053/io/lidar_io.hpp"
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 
 namespace ps26053 {
 
@@ -73,6 +74,9 @@ bool LidarIO::loadLabels(const std::string& filepath, PointCloud& in_out_cloud) 
 bool LidarIO::writePLY(const std::string& filepath, const PointCloud& cloud) {
     std::ofstream out(filepath);
     if (!out.is_open()) return false;
+
+    // Full float precision so exported coordinates round-trip exactly.
+    out << std::setprecision(10);
 
     out << "ply\n";
     out << "format ascii 1.0\n";
