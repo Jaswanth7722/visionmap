@@ -34,6 +34,55 @@ int main() {
     std::cout << "Track #" << tracks[0].id << " velocity: vx=" << tracks[0].velocity.x()
               << " vy=" << tracks[0].velocity.y() << std::endl;
     assert(tracks[0].velocity.x() > 0.5f);
+    // H1: confidence is computed from history, never the default 0.
+    assert(tracks[0].confidence > 0.5f);
+
+    // H1: objects stacked in Z must not merge. Two 10-point clusters share
+    // the same XY footprint but sit 2.5 m apart in height; the old 1 m XY
+    // binning produced one track, 3D clustering must produce two.
+    {
+        ps26053::KalmanTracker zt;
+        ps26053::PointCloud pts;
+        for (int i = 0; i < 10; ++i) {
+            ps26053::Point3D p;
+            p.x = 10.0f + (i % 3) * 0.2f;
+            p.y = 5.0f + (i / 3) * 0.2f;
+            p.z = 0.5f;
+            p.semantic_class = ps26053::SemanticClass::DYNAMIC_OBSTACLE;
+            pts.push_back(p);
+        }
+        for (int i = 0; i < 10; ++i) {
+            ps26053::Point3D p;
+            p.x = 10.0f + (i % 3) * 0.2f;
+            p.y = 5.0f + (i / 3) * 0.2f;
+            p.z = 3.0f;
+            p.semantic_class = ps26053::SemanticClass::DYNAMIC_OBSTACLE;
+            pts.push_back(p);
+        }
+        zt.update(pts, 0.0);
+        auto ztr = zt.getActiveTracks();
+        assert(ztr.size() == 2);
+        assert(ztr[0].confidence == 0.5f && ztr[1].confidence == 0.5f);
+    }
+
+    // H1: one 4.5 m vehicle must form one track, not one per 1 m bin.
+    {
+        ps26053::KalmanTracker vt;
+        ps26053::PointCloud pts;
+        for (float x = 10.0f; x < 14.5f; x += 0.3f) {
+            for (float y = 4.6f; y < 5.4f; y += 0.3f) {
+                ps26053::Point3D p;
+                p.x = x; p.y = y; p.z = 0.5f;
+                p.semantic_class = ps26053::SemanticClass::DYNAMIC_OBSTACLE;
+                pts.push_back(p);
+            }
+        }
+        vt.update(pts, 0.0);
+        auto vtr = vt.getActiveTracks();
+        assert(vtr.size() == 1);
+        // bbox spans the vehicle, far beyond a single 1 m bin
+        assert(vtr[0].bbox.max_x - vtr[0].bbox.min_x > 3.0f);
+    }
 
     std::cout << "[Test PASS] test_tracking succeeded!\n";
     return 0;

@@ -2,8 +2,31 @@
 #include <cmath>
 #include <unordered_map>
 #include <algorithm>
+#include <functional>
+#include <numeric>
+#include <tuple>
 
 namespace ps26053 {
+
+namespace {
+
+// Exact 3D integer cell key: no hash truncation, so distant points can never
+// share a cell through key collision.
+struct CellKey {
+    int64_t x, y, z;
+    bool operator==(const CellKey& o) const { return x == o.x && y == o.y && z == o.z; }
+};
+
+struct CellKeyHash {
+    size_t operator()(const CellKey& k) const noexcept {
+        size_t h = std::hash<int64_t>{}(k.x);
+        h ^= std::hash<int64_t>{}(k.y) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        h ^= std::hash<int64_t>{}(k.z) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+} // namespace
 
 SingleKalmanFilter::SingleKalmanFilter(const Eigen::Vector2f& initial_pos, float dt) {
     x = Eigen::Vector4f(initial_pos.x(), initial_pos.y(), 0.0f, 0.0f);
@@ -46,38 +69,112 @@ KalmanTracker::KalmanTracker() {}
 
 std::vector<BoundingBox2D> KalmanTracker::clusterDynamicPoints(const PointCloud& dynamic_cloud) const {
     std::vector<BoundingBox2D> clusters;
-    if (dynamic_cloud.empty()) return clusters;
-
-    // Fast grid-based clustering
-    float grid_size = 1.0f;
-    std::unordered_map<int64_t, std::vector<Point3D>> grid;
-
+    std::vector<const Point3D*> pts;
+    pts.reserve(dynamic_cloud.size());
     for (const auto& pt : dynamic_cloud) {
         if (pt.semantic_class != SemanticClass::DYNAMIC_OBSTACLE) continue;
-        int gx = static_cast<int>(std::floor(pt.x / grid_size));
-        int gy = static_cast<int>(std::floor(pt.y / grid_size));
-        int64_t key = (static_cast<int64_t>(gx) << 32) | (static_cast<int64_t>(gy) & 0xFFFFFFFFLL);
-        grid[key].push_back(pt);
+        pts.push_back(&pt);
+    }
+    if (pts.empty()) return clusters;
+
+    // 3D Euclidean connected components (H1): points within kClusterRadius
+    // link up, so one vehicle forms one cluster regardless of its span, and
+    // objects stacked in Z never merge. Union-find over a 3D spatial hash.
+    constexpr float kClusterRadius = 1.0f;
+    constexpr size_t kMinClusterPoints = 5;
+
+    std::unordered_map<CellKey, std::vector<size_t>, CellKeyHash> grid;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        CellKey key{
+            static_cast<int64_t>(std::floor(pts[i]->x / kClusterRadius)),
+            static_cast<int64_t>(std::floor(pts[i]->y / kClusterRadius)),
+            static_cast<int64_t>(std::floor(pts[i]->z / kClusterRadius))};
+        grid[key].push_back(i);
     }
 
-    for (const auto& [key, pts] : grid) {
-        if (pts.size() < 5) continue;
-        BoundingBox2D bbox{pts[0].x, pts[0].x, pts[0].y, pts[0].y};
-        for (const auto& p : pts) {
-            bbox.min_x = std::min(bbox.min_x, p.x);
-            bbox.max_x = std::max(bbox.max_x, p.x);
-            bbox.min_y = std::min(bbox.min_y, p.y);
-            bbox.max_y = std::max(bbox.max_y, p.y);
+    std::vector<size_t> parent(pts.size());
+    std::iota(parent.begin(), parent.end(), 0);
+    std::function<size_t(size_t)> find = [&](size_t a) -> size_t {
+        while (parent[a] != a) {
+            parent[a] = parent[parent[a]];
+            a = parent[a];
         }
-        clusters.push_back(bbox);
+        return a;
+    };
+    auto unite = [&](size_t a, size_t b) {
+        a = find(a);
+        b = find(b);
+        if (a != b) parent[a] = b;
+    };
+
+    const float r2 = kClusterRadius * kClusterRadius;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        int64_t ix = static_cast<int64_t>(std::floor(pts[i]->x / kClusterRadius));
+        int64_t iy = static_cast<int64_t>(std::floor(pts[i]->y / kClusterRadius));
+        int64_t iz = static_cast<int64_t>(std::floor(pts[i]->z / kClusterRadius));
+        for (int64_t dx = -1; dx <= 1; ++dx) {
+            for (int64_t dy = -1; dy <= 1; ++dy) {
+                for (int64_t dz = -1; dz <= 1; ++dz) {
+                    auto it = grid.find(CellKey{ix + dx, iy + dy, iz + dz});
+                    if (it == grid.end()) continue;
+                    for (size_t j : it->second) {
+                        if (j <= i) continue; // each unordered pair once
+                        float ddx = pts[i]->x - pts[j]->x;
+                        float ddy = pts[i]->y - pts[j]->y;
+                        float ddz = pts[i]->z - pts[j]->z;
+                        if (ddx * ddx + ddy * ddy + ddz * ddz <= r2) {
+                            unite(i, j);
+                        }
+                    }
+                }
+            }
+        }
     }
+
+    std::unordered_map<size_t, BoundingBox2D> boxes;
+    std::unordered_map<size_t, size_t> counts;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        size_t root = find(i);
+        auto it = boxes.find(root);
+        if (it == boxes.end()) {
+            boxes.emplace(root, BoundingBox2D{pts[i]->x, pts[i]->x, pts[i]->y, pts[i]->y});
+            counts.emplace(root, 1);
+        } else {
+            BoundingBox2D& bbox = it->second;
+            bbox.min_x = std::min(bbox.min_x, pts[i]->x);
+            bbox.max_x = std::max(bbox.max_x, pts[i]->x);
+            bbox.min_y = std::min(bbox.min_y, pts[i]->y);
+            bbox.max_y = std::max(bbox.max_y, pts[i]->y);
+            ++counts[root];
+        }
+    }
+
+    for (const auto& [root, bbox] : boxes) {
+        if (counts[root] >= kMinClusterPoints) {
+            clusters.push_back(bbox);
+        }
+    }
+
+    // Deterministic cluster order (unordered_map iteration is not), so track
+    // IDs are reproducible for identical inputs.
+    std::sort(clusters.begin(), clusters.end(), [](const BoundingBox2D& a, const BoundingBox2D& b) {
+        if (a.min_x != b.min_x) return a.min_x < b.min_x;
+        return a.min_y < b.min_y;
+    });
 
     return clusters;
 }
 
 void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& clusters, double timestamp) {
-    // 1. Predict existing tracks
+    // 1. Predict existing tracks using the REAL inter-frame interval (H1).
+    // Non-positive intervals (repeated timestamps) predict with dt = 0, i.e.
+    // no motion assumed; large gaps are clamped to 1 s to keep the
+    // covariance update bounded.
     float dt = 0.1f;
+    if (has_last_timestamp_) {
+        double raw_dt = timestamp - last_timestamp_;
+        dt = (raw_dt > 0.0) ? static_cast<float>(std::min(raw_dt, 1.0)) : 0.0f;
+    }
     for (auto& kf : filters_) {
         kf.predict(dt);
     }
@@ -112,6 +209,9 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
             tracks_[t].bbox = clusters[best_c];
             tracks_[t].hits++;
             tracks_[t].misses = 0;
+            // Confidence is computed from association history (H1), never
+            // left at the constructor default.
+            tracks_[t].confidence = trackConfidence(tracks_[t].hits);
             if (tracks_[t].hits >= 2) {
                 tracks_[t].confirmed = true;
             }
@@ -135,6 +235,7 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
             track.semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
             track.hits = 1;
             track.misses = 0;
+            track.confidence = trackConfidence(1);
             track.confirmed = false;
             tracks_.push_back(track);
         }
@@ -152,6 +253,8 @@ void KalmanTracker::associateAndFilter(const std::vector<BoundingBox2D>& cluster
 void KalmanTracker::update(const PointCloud& dynamic_cloud, double timestamp) {
     auto clusters = clusterDynamicPoints(dynamic_cloud);
     associateAndFilter(clusters, timestamp);
+    last_timestamp_ = timestamp;
+    has_last_timestamp_ = true;
 }
 
 } // namespace ps26053

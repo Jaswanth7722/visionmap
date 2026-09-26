@@ -34,6 +34,17 @@ private:
     int32_t next_track_id_{1};
     std::vector<TrackedObject> tracks_;
     std::vector<SingleKalmanFilter> filters_;
+    double last_timestamp_{0.0};
+    bool has_last_timestamp_{false};
+
+    /**
+     * @brief Track confidence from association history: a new track starts
+     * at 0.50 and gains 0.10 per consecutive hit, capped at 0.95.
+     */
+    static float trackConfidence(int32_t hits) {
+        float c = 0.40f + 0.10f * static_cast<float>(hits);
+        return (c > 0.95f) ? 0.95f : c;
+    }
 
     std::vector<BoundingBox2D> clusterDynamicPoints(const PointCloud& dynamic_cloud) const;
     void associateAndFilter(const std::vector<BoundingBox2D>& clusters, double timestamp);
