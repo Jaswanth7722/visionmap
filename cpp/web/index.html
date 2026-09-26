@@ -8,9 +8,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
     
-    <!-- Three.js & OrbitControls for Hardware-Accelerated 3D WebGL -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<!-- Three.js & OrbitControls for Hardware-Accelerated 3D WebGL (vendored
+     locally under cpp/web/vendor/ so the dashboard works with no internet;
+     previously CDN-only, which broke all camera/upload paths offline) -->
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
 
     <style>
         :root {
@@ -817,7 +819,7 @@
                 <!-- HUD Overlays -->
                 <div class="hud-overlay-top">
                     <div class="hud-tags-group">
-                        <span class="canvas-tag" id="tagPointsCount">POINTS: 8,175 (LiDAR)</span>
+                        <span class="canvas-tag" id="tagPointsCount">POINTS: —</span>
                         <span class="canvas-tag" id="tagCamSensorStatus" style="color:#94a3b8;">CAM 3D: IDLE</span>
                         <span class="canvas-tag">60 FPS WEBGL</span>
                     </div>
@@ -958,7 +960,23 @@
         let lidarPointCloud, cameraPointCloud;
         let frustumWireframe, egoVehicleGroup, boundingBoxesGroup;
 
+        // WebGL-engine guards: camera/video/upload paths must keep working
+        // (preview, 2D BEV, HUD) even when Three.js failed to load, e.g. with
+        // no internet before vendoring. Never assume these objects exist.
+        function webglReady() { return (typeof THREE !== 'undefined') && !!frustumWireframe; }
+        function setFrustumVisible(v) { if (frustumWireframe) frustumWireframe.visible = v; }
+
         function initThreeJS() {
+            if (typeof THREE === 'undefined' || !THREE.OrbitControls) {
+                const fallback = document.getElementById('threeContainer');
+                if (fallback) {
+                    fallback.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#94a3b8;font-size:13px;text-align:center;padding:20px;">3D engine unavailable: Three.js failed to load.<br>LiDAR polling, 2.5D BEV, tracks and metrics below keep working.</div>';
+                }
+                appendLog('3D engine unavailable: Three.js failed to load; HUD/BEV/tracks continue without WebGL.', 'warn');
+                fetchLidarBenchmarkScan();
+                startLidarPolling();
+                return;
+            }
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x020408);
             scene.fog = new THREE.FogExp2(0x020408, 0.012);
@@ -1074,9 +1092,11 @@
 
         function onWindowResize() {
             if (!container) return;
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
+            if (renderer && camera) {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
 
             const gridVp = document.getElementById('gridContainer');
             gridCanvas.width = gridVp.clientWidth;
@@ -1280,6 +1300,7 @@
         }
 
         function updateTrackBoundingBoxes() {
+            if (!webglReady()) return; // 2D tracks table still updates below
             // Clear previous bounding boxes
             while (boundingBoxesGroup.children.length > 0) {
                 boundingBoxesGroup.remove(boundingBoxesGroup.children[0]);
@@ -1442,7 +1463,7 @@
                 isVideoPlaying = true;
                 isWebcamRunning = true;
                 playPauseIcon.innerText = '⏸';
-                frustumWireframe.visible = true;
+                setFrustumVisible(true);
                 startStreamingSourceToThree(webcamVideo);
                 appendLog(`Video: ${file.name} (${webcamVideo.videoWidth}x${webcamVideo.videoHeight}) — RGB fused into 3D point cloud.`, 'ok');
             };
@@ -1566,32 +1587,38 @@
                 } catch (err1) {
                     webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 }
-
-                webcamVideo.src = "";
-                webcamVideo.srcObject = webcamStream;
-                webcamVideo.style.display = 'block';
-                camPlaceholder.style.display = 'none';
-                camHudOverlay.style.display = 'block';
-                videoControlsGroup.style.display = 'none';
-
-                camStatusBadge.className = 'status-badge online';
-                camStatusBadge.innerHTML = '<span class="pulse-indicator"></span> Real Camera Online';
-                btnToggleCam.innerHTML = '<span>⏹ Stop Camera</span>';
-                btnToggleCam.className = 'btn danger';
-                isWebcamRunning = true;
-
-                const track = webcamStream.getVideoTracks()[0];
-                const settings = track.getSettings ? track.getSettings() : {};
-                document.getElementById('camResLabel').innerText = `${settings.width || 640}x${settings.height || 480}`;
-
-                frustumWireframe.visible = true;
-                appendLog(`Live camera online: ${settings.width || 640}x${settings.height || 480}.`, "ok");
-                enumerateVideoDevices();
-                startStreamingSourceToThree(webcamVideo);
             } catch (err) {
-                appendLog(`Camera error: ${err.message}`, "warn");
+                appendLog(`Camera device error: ${err.message}`, "warn");
                 alert("Could not access camera device: " + err.message);
+                return;
             }
+
+            webcamVideo.src = "";
+            webcamVideo.srcObject = webcamStream;
+            webcamVideo.style.display = 'block';
+            camPlaceholder.style.display = 'none';
+            camHudOverlay.style.display = 'block';
+            videoControlsGroup.style.display = 'none';
+
+            camStatusBadge.className = 'status-badge online';
+            camStatusBadge.innerHTML = '<span class="pulse-indicator"></span> Real Camera Online';
+            btnToggleCam.innerHTML = '<span>⏹ Stop Camera</span>';
+            btnToggleCam.className = 'btn danger';
+            isWebcamRunning = true;
+
+            const track = webcamStream.getVideoTracks()[0];
+            const settings = track.getSettings ? track.getSettings() : {};
+            document.getElementById('camResLabel').innerText = `${settings.width || 640}x${settings.height || 480}`;
+
+            // 3D fusion is best-effort: the camera preview and 2D/BEV keep
+            // working even when the WebGL engine failed to initialize.
+            setFrustumVisible(true);
+            if (!webglReady()) {
+                appendLog('Camera preview on, but 3D fusion is unavailable (WebGL engine down).', 'warn');
+            }
+            appendLog(`Live camera online: ${settings.width || 640}x${settings.height || 480}.`, "ok");
+            enumerateVideoDevices();
+            startStreamingSourceToThree(webcamVideo);
         }
 
         btnFlipCam.addEventListener('click', async () => {
@@ -1634,7 +1661,7 @@
             isWebcamRunning = false;
             isVideoPlaying = false;
 
-            frustumWireframe.visible = false;
+            setFrustumVisible(false);
             tagCamSensorStatus.innerText = 'CAM 3D: IDLE';
             tagCamSensorStatus.style.color = '#94a3b8';
             updatePointsHud();
@@ -1703,6 +1730,16 @@
 
         function updatePointsHud() {
             tagPointsCount.innerText = `POINTS: ${lidarPoints.length.toLocaleString()} (C++ LiDAR)`;
+        }
+
+        // Explicit 3D refresh from the current video/camera frame, used by the
+        // color-mode buttons. The per-frame RGB fusion already runs in the
+        // streaming loop; this only re-renders, so without the WebGL engine
+        // it is a no-op instead of the ReferenceError the missing function
+        // used to throw.
+        function projectElementToThree(sourceElement) {
+            if (!webglReady() || !sourceElement) return;
+            updateLidarThreeGeometry();
         }
 
         // Color Mode Buttons
@@ -1955,17 +1992,6 @@
                 gridCtx.fillText(`${c.label}  ${c.count.toLocaleString()}`, hudX + 12, y);
             });
         }
-
-        // =========================================================================
-        // BENCHMARK LIDAR C++ SERVER INGEST
-        // =========================================================================
-        btnProcessLidar.addEventListener('click', async () => {
-            btnProcessLidar.disabled = true;
-            btnProcessLidar.innerText = "⏳ Ingesting C++ Core...";
-            await fetchLidarBenchmarkScan();
-            btnProcessLidar.disabled = false;
-            btnProcessLidar.innerHTML = "<span>⚡ Process LiDAR in Native C++</span>";
-        });
 
         // Initialize on load
         window.addEventListener('DOMContentLoaded', () => {

@@ -168,3 +168,20 @@ plus worst-frame boundary QA. The server exposes `GET /api/frames` and
 Verified on a 3-frame fixture: mapper 27,476 -> 28,784 cells, tracks stable
 at 12; benchmark totals identical inputs (367,878 pts); server frame advance
 matches the mapper's cell counts exactly (cross-binary determinism).
+
+## Addendum (2026-09-26): dashboard camera/upload failures fixed
+
+The C++ dashboard's camera and video-upload paths were completely broken by
+two compounding defects, found from the reported
+`Cannot set properties of undefined (setting 'visible')` alert: (1) Three.js
+loaded only from CDN, so offline the whole 3D engine (and every camera/upload
+handler touching it) died; (2) a dead `btnProcessLidar` reference at the top
+level of the page script aborted execution before init, so even online nothing
+live ever initialized. Fixed by vendoring `three.min.js` r128 +
+`OrbitControls.js` under `cpp/web/vendor/` with a traversal-safe server route,
+deleting the dead button block, guarding all WebGL touch points (camera/video/
+BEV/HUD keep working without the 3D engine), splitting camera-device errors
+from engine errors, implementing the missing `projectElementToThree`, and
+replacing the static `POINTS: 8,175` placeholder with a live value. Verified
+with a headless DOM harness in both worlds (engine present/absent × camera
+allowed/denied): zero uncaught errors, honest alerts only.

@@ -267,6 +267,8 @@ private:
             serveApiFrames(sock);
         } else if (method == "POST" && pure_path == "/api/frame/next") {
             serveApiFrameNext(sock);
+        } else if (method == "GET" && pure_path.rfind("/vendor/", 0) == 0) {
+            serveVendorFile(sock, pure_path);
         } else if (method == "OPTIONS") {
             serveCorsPreflight(sock);
         } else {
@@ -290,6 +292,30 @@ private:
             html = "<html><body><h2>Mobile Camera Transmitter</h2><p>File cpp/web/mobile.html not found.</p></body></html>";
         }
         sendResponse(sock, 200, "text/html; charset=utf-8", html);
+    }
+
+    // Serve vendored frontend assets (Three.js). Flat directory only:
+    // any path separator or ".." outside the leading prefix is rejected so
+    // this can never escape cpp/web/vendor/.
+    void serveVendorFile(SOCKET sock, const std::string& pure_path) {
+        std::string name = pure_path.substr(std::string("/vendor/").size());
+        if (name.empty() || name.find("..") != std::string::npos ||
+            name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
+            sendResponse(sock, 404, "text/plain", "404 Not Found");
+            return;
+        }
+        std::string content_type = "application/octet-stream";
+        if (name.size() >= 3 && name.compare(name.size() - 3, 3, ".js") == 0) {
+            content_type = "application/javascript";
+        } else if (name.size() >= 4 && name.compare(name.size() - 4, 4, ".css") == 0) {
+            content_type = "text/css";
+        }
+        std::string body = readFileContents("cpp/web/vendor/" + name);
+        if (body.empty()) {
+            sendResponse(sock, 404, "text/plain", "404 Not Found");
+            return;
+        }
+        sendResponse(sock, 200, content_type, body);
     }
 
     void serveApiStatus(SOCKET sock) {
