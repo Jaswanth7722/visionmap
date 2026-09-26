@@ -2,6 +2,8 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <sstream>
+#include <unordered_map>
 
 namespace ps26053 {
 
@@ -37,7 +39,39 @@ bool LidarIO::loadBinScan(const std::string& filepath, PointCloud& out_cloud) {
     return true;
 }
 
-bool LidarIO::loadLabels(const std::string& filepath, PointCloud& in_out_cloud) {
+bool LidarIO::loadLabels(const std::string& filepath, PointCloud& in_out_cloud,
+                       const std::string& remap_path) {
+    // Load the shared native-id -> project-class table (H7). Any problem
+    // with it is fatal: guessing a label mapping silently is exactly how the
+    // old hardcoded 0/1/2 table diverged from the Python one.
+    std::ifstream remap_file(remap_path);
+    if (!remap_file.is_open()) {
+        std::cerr << "[LidarIO] Label remap table not found: " << remap_path << std::endl;
+        return false;
+    }
+    std::unordered_map<uint16_t, int> remap;
+    std::string line;
+    size_t lineno = 0;
+    while (std::getline(remap_file, line)) {
+        ++lineno;
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos || line[start] == '#') continue;
+        std::istringstream fields(line.substr(start));
+        int raw_id = -1, class_id = -2;
+        if (!(fields >> raw_id >> class_id) || raw_id < 0 || raw_id > 0xFFFF ||
+            (class_id != -1 && class_id != 0 && class_id != 1 && class_id != 2)) {
+            std::cerr << "[LidarIO] Malformed remap table " << remap_path
+                      << ":" << lineno << std::endl;
+            return false;
+        }
+        remap[static_cast<uint16_t>(raw_id)] = class_id;
+    }
+    if (remap.size() < 30) {
+        std::cerr << "[LidarIO] Remap table " << remap_path << " looks truncated ("
+                  << remap.size() << " entries)." << std::endl;
+        return false;
+    }
+
     std::ifstream file(filepath, std::ios::binary);
     if (!file.is_open()) {
         return false;
@@ -56,16 +90,40 @@ bool LidarIO::loadLabels(const std::string& filepath, PointCloud& in_out_cloud) 
     std::vector<uint32_t> buffer(num_labels);
     file.read(reinterpret_cast<char*>(buffer.data()), file_size);
 
+    size_t unmapped = 0;
     for (size_t i = 0; i < num_labels; ++i) {
-        uint16_t sem_label = buffer[i] & 0xFFFF;
-        if (sem_label == 0) {
-            in_out_cloud[i].semantic_class = SemanticClass::TERRAIN;
-        } else if (sem_label == 1) {
-            in_out_cloud[i].semantic_class = SemanticClass::STATIC_OBSTACLE;
-        } else if (sem_label == 2) {
-            in_out_cloud[i].semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
+        uint16_t sem_label = static_cast<uint16_t>(buffer[i] & 0xFFFF);
+        auto it = remap.find(sem_label);
+        if (it == remap.end()) {
+            // Native id absent from the shared table: admit ignorance rather
+            // than guessing a class.
+            in_out_cloud[i].semantic_class = SemanticClass::UNKNOWN;
+            in_out_cloud[i].confidence = 0.0f;
+            ++unmapped;
+            continue;
         }
-        in_out_cloud[i].confidence = 1.0f;
+        switch (it->second) {
+            case 0:
+                in_out_cloud[i].semantic_class = SemanticClass::TERRAIN;
+                in_out_cloud[i].confidence = 1.0f;
+                break;
+            case 1:
+                in_out_cloud[i].semantic_class = SemanticClass::STATIC_OBSTACLE;
+                in_out_cloud[i].confidence = 1.0f;
+                break;
+            case 2:
+                in_out_cloud[i].semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
+                in_out_cloud[i].confidence = 1.0f;
+                break;
+            default: // -1: ignore
+                in_out_cloud[i].semantic_class = SemanticClass::UNKNOWN;
+                in_out_cloud[i].confidence = 0.0f;
+                break;
+        }
+    }
+    if (unmapped > 0) {
+        std::cerr << "[LidarIO] " << unmapped << " labels not present in " << remap_path
+                  << "; tagged UNKNOWN." << std::endl;
     }
 
     return true;

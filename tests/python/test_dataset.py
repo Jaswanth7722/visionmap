@@ -76,5 +76,31 @@ def test_dataset_loading_and_sampling():
         stats = compute_dataset_class_distribution(ds, num_samples=1)
         assert stats["total_points"] == 2048
         assert len(stats["recommended_weights"]) == 3
+        # Ground-truth provenance is flagged for consumers (H7).
+        assert ds.has_ground_truth is True
+        assert ds.label_provenance == "ground-truth"
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_heuristic_label_provenance_without_label_files():
+    """Scans without .label files must be flagged heuristic, never silently
+    presented as ground truth (H7: blocks circular evaluation)."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        seq_dir = Path(temp_dir) / "sequences" / "00" / "velodyne"
+        seq_dir.mkdir(parents=True, exist_ok=True)
+        raw_pts = np.random.randn(500, 4).astype(np.float32)
+        raw_pts.tofile(str(seq_dir / "000000.bin"))
+
+        ds = SemanticKITTIDataset(
+            root_dir=temp_dir, sequences=["00"], num_points=64,
+            auto_download_labels=False,
+        )
+        assert ds.has_ground_truth is False
+        assert ds.label_provenance == "heuristic"
+        xyz, lbl = ds[0]
+        assert xyz.shape == (64, 3)
+        assert set(lbl.numpy().tolist()).issubset({-1, 0, 1, 2})
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

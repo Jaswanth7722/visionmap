@@ -18,7 +18,11 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 # ==============================================================================
-# EXPLICIT SEMANTICKITTI CLASS REMAPPING TABLE
+# SEMANTICKITTI CLASS REMAPPING TABLE — loaded from the single source of truth
+# (config/semantickitti_remap.txt), which cpp/src/io/lidar_io.cpp also loads.
+# This table is NOT duplicated here: it is read from that file at import, and
+# import fails loudly if the file is missing or malformed, so the two
+# languages can never silently disagree again (H7).
 # ==============================================================================
 # Native SemanticKITTI label IDs:
 # 0: unlabeled, 1: outlier
@@ -27,50 +31,46 @@ from torch.utils.data import Dataset, DataLoader
 # 40: road, 44: parking, 48: sidewalk, 49: other-ground, 60: lane-marking
 # 50: building, 51: fence, 52: other-structure, 70: vegetation, 71: trunk, 80: pole, 81: traffic-sign, 99: other-object
 # 252-259: moving variants
-SEMANTICKITTI_REMAP_TABLE: Dict[int, int] = {
-    # 0: terrain (road, sidewalk, terrain, parking, other-ground, lane-marking)
-    40: 0,   # road
-    44: 0,   # parking
-    48: 0,   # sidewalk
-    49: 0,   # other-ground
-    60: 0,   # lane-marking
-    72: 0,   # terrain
+def _load_remap_table() -> Dict[int, int]:
+    table_path = Path(__file__).resolve().parent.parent.parent / "config" / "semantickitti_remap.txt"
+    if not table_path.is_file():
+        raise RuntimeError(
+            f"Label remap table not found: {table_path}. "
+            "Refusing to train or evaluate with an unknown label mapping."
+        )
+    table: Dict[int, int] = {}
+    for lineno, line in enumerate(table_path.read_text(encoding="utf-8").splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = stripped.split()
+        if len(parts) != 2:
+            raise RuntimeError(
+                f"Malformed remap table {table_path}:{lineno}: expected '<native id> <class id>'."
+            )
+        try:
+            raw_id, class_id = int(parts[0]), int(parts[1])
+        except ValueError:
+            raise RuntimeError(
+                f"Malformed remap table {table_path}:{lineno}: non-integer entry."
+            )
+        if class_id not in (-1, 0, 1, 2):
+            raise RuntimeError(
+                f"Malformed remap table {table_path}:{lineno}: class id must be -1, 0, 1 or 2."
+            )
+        if raw_id in table:
+            raise RuntimeError(
+                f"Malformed remap table {table_path}:{lineno}: duplicate native id {raw_id}."
+            )
+        table[raw_id] = class_id
+    if len(table) < 30:
+        raise RuntimeError(
+            f"Remap table {table_path} looks truncated ({len(table)} entries)."
+        )
+    return table
 
-    # 1: static_obstacle (building, fence, pole, wall, vegetation, traffic-sign, trunk, other-structure)
-    50: 1,   # building
-    51: 1,   # fence
-    52: 1,   # other-structure
-    70: 1,   # vegetation
-    71: 1,   # trunk
-    80: 1,   # pole
-    81: 1,   # traffic-sign
-    99: 1,   # other-object
 
-    # 2: dynamic_object (car, truck, person, bicyclist, motorcyclist, other-vehicle, bus, on-rails)
-    10: 2,   # car
-    11: 2,   # bicycle
-    13: 2,   # bus
-    15: 2,   # motorcycle
-    16: 2,   # on-rails
-    18: 2,   # truck
-    20: 2,   # other-vehicle
-    30: 2,   # person
-    31: 2,   # bicyclist
-    32: 2,   # motorcyclist
-    # Moving variants in SemanticKITTI:
-    252: 2,  # moving car
-    253: 2,  # moving bicyclist
-    254: 2,  # moving person
-    255: 2,  # moving motorcyclist
-    256: 2,  # moving on-rails
-    257: 2,  # moving bus
-    258: 2,  # moving truck
-    259: 2,  # moving other-vehicle
-
-    # Ignore index (-1)
-    0: -1,   # unlabeled
-    1: -1,   # outlier
-}
+SEMANTICKITTI_REMAP_TABLE: Dict[int, int] = _load_remap_table()
 
 CLASS_NAMES = {
     0: "terrain",
@@ -208,6 +208,13 @@ class SemanticKITTIDataset(Dataset):
             raise FileNotFoundError(
                 f"No scan files found under {self.root_dir} for sequences {self.sequences}."
             )
+
+        # Label provenance (H7): ground-truth .label files present, or the
+        # geometric heuristic fallback. Consumers that report accuracy numbers
+        # (evaluate.py) must check has_ground_truth first and refuse to score
+        # heuristic labels as if they were ground truth.
+        self.has_ground_truth = len(self.label_files) > 0
+        self.label_provenance = "ground-truth" if self.has_ground_truth else "heuristic"
 
         if subsample_ratio < 1.0:
             total = len(self.scan_files)

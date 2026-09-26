@@ -130,6 +130,7 @@ set(TEST_TARGETS
     test_boundary_alignment
     test_coordinate_transform
     test_preprocessing
+    test_io
 )
 
 foreach(test_name ${TEST_TARGETS})

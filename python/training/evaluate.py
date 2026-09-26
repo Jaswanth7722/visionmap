@@ -130,6 +130,9 @@ if __name__ == "__main__":
     parser.add_argument("--num-points", type=int, default=4096, help="Points per cloud")
     parser.add_argument("--batch-size", type=int, default=8, help="Evaluation batch size")
     parser.add_argument("--output-json", type=str, default="evaluation_metrics.json", help="Path to save metrics JSON")
+    parser.add_argument("--no-label-download", action="store_true",
+                        help="Do not attempt to download SemanticKITTI labels when missing "
+                             "(useful offline; evaluation then refuses without ground truth)")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -147,8 +150,22 @@ if __name__ == "__main__":
         root_dir=args.data_dir,
         sequences=args.sequences,
         num_points=args.num_points,
-        split="val"
+        split="val",
+        auto_download_labels=not args.no_label_download,
     )
+
+    # H7: never score a model against its own heuristic output. Without
+    # ground-truth .label files the "targets" would be geometric guesses, and
+    # any accuracy number computed from them is circular. Refuse loudly and
+    # write no metrics file, so no fabricated report can circulate.
+    if not val_dataset.has_ground_truth:
+        print("=" * 70)
+        print("NO GROUND TRUTH AVAILABLE -- evaluation refused.")
+        print(f"Sequences {args.sequences} under {args.data_dir} contain no .label files;")
+        print("scoring against heuristic labels would be circular validation.")
+        print("Provide SemanticKITTI .label files (or run with labels) and retry.")
+        print("=" * 70)
+        sys.exit(2)
     val_loader = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
