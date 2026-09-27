@@ -202,7 +202,7 @@ BoundaryQA Grid25D::checkBoundaryAlignment() const {
 
 void Grid25D::updateTrackedObjects(const std::vector<TrackedObject>& tracks) {
     for (const auto& track : tracks) {
-        if (!track.confirmed) continue;
+        if (!track.confirmed && track.hits < 1) continue;
 
         for (auto& [key, tree] : tiles_) {
             auto cells = tree->getActiveCellsMutable();

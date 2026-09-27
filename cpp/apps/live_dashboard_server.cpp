@@ -415,25 +415,38 @@ private:
         ss << "  \"points\": [\n";
         bool first_pt = true;
 
-        // Dynamic obstacles (vehicles) priority emission
-        for (size_t i = 0; i < cloud_to_send.size(); ++i) {
-            const auto& pt = cloud_to_send[i];
+        // Retain 100% of dynamic obstacle points (vehicles) for crisp object detection.
+        // Subsample background points (road and static structures) to stay within payload budget (~16,000 pts).
+        std::vector<const ps26053::Point3D*> dyn_pts;
+        std::vector<const ps26053::Point3D*> bg_pts;
+        dyn_pts.reserve(cloud_to_send.size() / 10);
+        bg_pts.reserve(cloud_to_send.size());
+
+        for (const auto& pt : cloud_to_send) {
             if (pt.semantic_class == ps26053::SemanticClass::DYNAMIC_OBSTACLE) {
-                if (!first_pt) ss << ",\n";
-                first_pt = false;
-                ss << "    [" << pt.x << "," << pt.y << "," << pt.z << "," << pt.intensity << ",2," << pt.confidence << "]";
+                dyn_pts.push_back(&pt);
+            } else {
+                bg_pts.push_back(&pt);
             }
         }
-        // Subsample terrain and static background points for efficient JSON transport
-        size_t step = std::max<size_t>(1, cloud_to_send.size() / 15000);
-        for (size_t i = 0; i < cloud_to_send.size(); i += step) {
-            const auto& pt = cloud_to_send[i];
-            if (pt.semantic_class != ps26053::SemanticClass::DYNAMIC_OBSTACLE) {
-                if (!first_pt) ss << ",\n";
-                first_pt = false;
-                int sem_cls = static_cast<int>(pt.semantic_class);
-                ss << "    [" << pt.x << "," << pt.y << "," << pt.z << "," << pt.intensity << "," << sem_cls << "," << pt.confidence << "]";
-            }
+
+        size_t target_bg = (dyn_pts.size() >= 16000) ? 0 : (16000 - dyn_pts.size());
+        size_t bg_step = (target_bg > 0 && bg_pts.size() > target_bg) ? std::max<size_t>(1, bg_pts.size() / target_bg) : 1;
+
+        // Emit all dynamic obstacle points
+        for (const auto* pt : dyn_pts) {
+            if (!first_pt) ss << ",\n";
+            first_pt = false;
+            ss << "    [" << pt->x << "," << pt->y << "," << pt->z << "," << pt->intensity << ",2," << pt->confidence << "]";
+        }
+
+        // Emit sampled background points
+        for (size_t i = 0; i < bg_pts.size(); i += bg_step) {
+            const auto* pt = bg_pts[i];
+            if (!first_pt) ss << ",\n";
+            first_pt = false;
+            int sem_cls = static_cast<int>(pt->semantic_class);
+            ss << "    [" << pt->x << "," << pt->y << "," << pt->z << "," << pt->intensity << "," << sem_cls << "," << pt->confidence << "]";
         }
         ss << "\n  ],\n";
 
@@ -757,7 +770,7 @@ private:
             // Delete previous files in uploads/ so obsolete uploads don't accumulate
             std::error_code ec;
             for (const auto& entry : std::filesystem::directory_iterator("uploads", ec)) {
-                if (entry.is_regular_file(ec) && entry.path().string() != save_path) {
+                if (entry.is_regular_file(ec) && !std::filesystem::equivalent(entry.path(), save_path, ec)) {
                     std::filesystem::remove(entry.path(), ec);
                 }
             }

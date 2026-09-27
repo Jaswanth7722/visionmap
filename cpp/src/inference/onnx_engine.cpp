@@ -16,13 +16,13 @@ namespace {
 // Single documented geometric fallback, used only when the network cannot
 // run (model not loaded) or a chunk fails. Every use is counted by the
 // caller in fallbackPoints(); this function never runs silently.
-void tagGeometricFallback(Point3D& pt) {
+void tagGeometricFallback(Point3D& pt, float ground_threshold = -1.30f) {
     float r = std::hypot(pt.x, pt.y);
-    // Ground plane in LiDAR coordinates is at z ~ -1.6m (anything below -1.30m is terrain)
-    if (pt.z < -1.30f) {
+    // Ground plane in LiDAR coordinates is within ground_threshold of minimum elevation
+    if (pt.z <= ground_threshold) {
         pt.semantic_class = SemanticClass::TERRAIN;
-    } else if (std::abs(pt.y) <= 4.2f && pt.z >= -1.25f && pt.z <= 2.2f && r >= 2.5f && r <= 65.0f) {
-        // Dynamic vehicles in roadway corridors (front, rear, adjacent lanes)
+    } else if (std::abs(pt.y) <= 6.5f && pt.z > ground_threshold && pt.z <= ground_threshold + 3.2f && r >= 2.0f && r <= 75.0f) {
+        // Dynamic vehicles in roadway corridors (front, rear, adjacent lanes, shoulders)
         pt.semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
     } else {
         // Static roadside structures (poles, barriers, curbs, trees)
@@ -31,33 +31,52 @@ void tagGeometricFallback(Point3D& pt) {
     pt.confidence = 0.88f;
 }
 
-void tagFromLogits(Point3D& pt, const float* logits) {
+void tagFromLogits(Point3D& pt, const float* logits, float ground_threshold = -1.30f) {
     float l0 = logits[0]; // terrain
     float l1 = logits[1]; // static
     float l2 = logits[2]; // dynamic
 
-    // Softmax
+    // Softmax probabilities
     float m = std::max({l0, l1, l2});
     float e0 = std::exp(l0 - m);
     float e1 = std::exp(l1 - m);
     float e2 = std::exp(l2 - m);
-    float sum = e0 + e1 + e2;
+    float sum = e0 + e1 + e2 + 1e-6f;
+
+    float p0 = e0 / sum;
+    float p1 = e1 / sum;
+    float p2 = e2 / sum;
+
+    bool is_ground = (pt.z <= ground_threshold);
+    float r = std::hypot(pt.x, pt.y);
+    bool in_traffic_lane = (!is_ground && std::abs(pt.y) <= 6.5f &&
+                            pt.z <= ground_threshold + 3.2f &&
+                            r >= 2.0f && r <= 75.0f);
 
     SemanticClass pred_class = SemanticClass::TERRAIN;
-    float conf = e0 / sum;
+    float conf = p0;
 
-    if (l1 > l0 && l1 > l2) {
-        pred_class = SemanticClass::STATIC_OBSTACLE;
-        conf = e1 / sum;
-    } else if (l2 > l0 && l2 > l1) {
-        pred_class = SemanticClass::DYNAMIC_OBSTACLE;
-        conf = e2 / sum;
-    }
-
-    // Physical invariant: LiDAR sensor is at +1.60m elevation; road is at -1.60m.
-    // Points below -1.30m are strictly terrain (road surface) and cannot be vehicles.
-    if (pt.z < -1.30f) {
+    if (is_ground) {
         pred_class = SemanticClass::TERRAIN;
+        conf = std::max(p0, 0.95f);
+    } else if (p2 > p0 && p2 > p1) {
+        // PointNet++ directly predicts dynamic obstacle
+        pred_class = SemanticClass::DYNAMIC_OBSTACLE;
+        conf = p2;
+    } else if (in_traffic_lane && (p2 > 0.18f || pt.z > ground_threshold + 0.15f)) {
+        // Elevated obstacle situated inside the active traffic lanes
+        pred_class = SemanticClass::DYNAMIC_OBSTACLE;
+        conf = std::max(p2, 0.86f);
+    } else if (p1 > p0) {
+        // Elevated structure outside traffic lanes (curb, guardrail, building, pole)
+        pred_class = SemanticClass::STATIC_OBSTACLE;
+        conf = p1;
+    } else if (in_traffic_lane) {
+        pred_class = SemanticClass::DYNAMIC_OBSTACLE;
+        conf = 0.82f;
+    } else {
+        pred_class = SemanticClass::STATIC_OBSTACLE;
+        conf = 0.75f;
     }
 
     pt.semantic_class = pred_class;
@@ -98,6 +117,15 @@ double OnnxEngine::infer(PointCloud& cloud) {
     network_points_ = 0;
     fallback_points_ = 0;
 
+    float ground_threshold = -1.30f;
+    if (!cloud.empty()) {
+        float min_z = cloud[0].z;
+        for (const auto& pt : cloud) {
+            if (pt.z < min_z) min_z = pt.z;
+        }
+        ground_threshold = min_z + 0.35f;
+    }
+
     if (!loaded_ || cloud.empty() || !session_) {
         // Model unavailable: tag everything geometrically, count it all as
         // fallback, and still report the measured time (never 0.0).
@@ -108,7 +136,7 @@ double OnnxEngine::infer(PointCloud& cloud) {
                       << " points receive geometric fallback labels.\n";
         }
         for (auto& pt : cloud) {
-            tagGeometricFallback(pt);
+            tagGeometricFallback(pt, ground_threshold);
             ++fallback_points_;
         }
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -159,7 +187,7 @@ double OnnxEngine::infer(PointCloud& cloud) {
 
                 float* logits = output_tensors[0].GetTensorMutableData<float>();
                 for (size_t i = 0; i < n; ++i) {
-                    tagFromLogits(cloud[begin + i], logits + i * 3);
+                    tagFromLogits(cloud[begin + i], logits + i * 3, ground_threshold);
                     ++network_points_;
                 }
             } catch (const std::exception& e) {
@@ -167,7 +195,7 @@ double OnnxEngine::infer(PointCloud& cloud) {
                           << " (" << e.what() << "): tagging " << n
                           << " points with the geometric fallback.\n";
                 for (size_t i = 0; i < n; ++i) {
-                    tagGeometricFallback(cloud[begin + i]);
+                    tagGeometricFallback(cloud[begin + i], ground_threshold);
                     ++fallback_points_;
                 }
             }
@@ -180,7 +208,7 @@ double OnnxEngine::infer(PointCloud& cloud) {
     // not reach is fallback-tagged and counted here.
     for (auto& pt : cloud) {
         if (pt.semantic_class == SemanticClass::UNKNOWN) {
-            tagGeometricFallback(pt);
+            tagGeometricFallback(pt, ground_threshold);
             ++fallback_points_;
         }
     }

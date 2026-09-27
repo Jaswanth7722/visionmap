@@ -154,19 +154,30 @@ std::vector<DynamicCluster> KalmanTracker::clusterDynamicPoints(const PointCloud
         }
     }
 
+    float road_mean_z = 0.0f;
+    size_t road_pts_count = 0;
+    for (const auto& pt : dynamic_cloud) {
+        if (pt.semantic_class == SemanticClass::TERRAIN) {
+            road_mean_z += pt.z;
+            road_pts_count++;
+        }
+    }
+    bool has_road = (road_pts_count > 50);
+    float ground_z = has_road ? (road_mean_z / static_cast<float>(road_pts_count)) : -1.60f;
+
     for (const auto& [root, bbox] : boxes) {
         if (counts[root] >= kMinClusterPoints) {
             float mean_z = static_cast<float>(sum_z[root] / static_cast<double>(counts[root]));
             float length = bbox.max_x - bbox.min_x;
             float width = bbox.max_y - bbox.min_y;
 
-            // Reject ground plane noise: road surface is at -1.6m; vehicles sit on top of wheels (mean_z > -1.25m)
-            if (mean_z < -1.25f) {
+            // Reject ground plane noise if road is present: vehicles sit on top of road (mean_z > ground_z + 0.15m)
+            if (has_road && mean_z < ground_z + 0.15f) {
                 continue;
             }
 
             // Reject tiny longitudinal slivers on road surface
-            if (length < 1.0f && mean_z < -0.6f) {
+            if (has_road && length < 0.8f && mean_z < ground_z + 0.35f) {
                 continue;
             }
 
@@ -269,7 +280,7 @@ void KalmanTracker::associateAndFilter(const std::vector<DynamicCluster>& cluste
             track.hits = 1;
             track.misses = 0;
             track.confidence = trackConfidence(1);
-            track.confirmed = false;
+            track.confirmed = true;
             tracks_.push_back(track);
         }
     }

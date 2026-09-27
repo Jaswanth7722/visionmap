@@ -490,34 +490,182 @@
 
         .hud-legend {
             position: absolute;
-            bottom: 12px;
+            bottom: 54px;
             left: 12px;
-            background: var(--bg-panel);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border-dim);
+            background: rgba(10, 15, 26, 0.90);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(56, 189, 248, 0.22);
             border-radius: 8px;
-            padding: 9px 12px;
+            padding: 8px 12px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 5px;
             z-index: 10;
             font-size: 9.5px;
             font-family: 'JetBrains Mono', monospace;
-            box-shadow: var(--shadow-md);
+            box-shadow: 0 4px 18px rgba(0,0,0,0.35);
         }
 
         .legend-item {
             display: flex;
             align-items: center;
             gap: 8px;
-            color: var(--text-main);
+            color: #e2e8f0;
             font-weight: 500;
         }
 
         .legend-dot {
-            width: 10px;
-            height: 10px;
+            width: 9px;
+            height: 9px;
             border-radius: 3px;
+        }
+
+        /* ── HUD Bottom Control Toolbar (LidarFlow Quality) ───────────────── */
+        .hud-overlay-bottom {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            background: rgba(8, 12, 22, 0.92);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(56, 189, 248, 0.22);
+            border-radius: 8px;
+            padding: 6px 12px;
+            z-index: 10;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9.5px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+        }
+
+        .hud-control-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .hud-label {
+            color: #94a3b8;
+            font-size: 8.5px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .hud-slider {
+            width: 58px;
+            height: 4px;
+            border-radius: 2px;
+            background: #334155;
+            outline: none;
+            cursor: pointer;
+            accent-color: #38bdf8;
+        }
+
+        .hud-slider-val {
+            color: #38bdf8;
+            font-weight: 700;
+            font-size: 9px;
+            min-width: 24px;
+        }
+
+        .view-preset-group {
+            display: flex;
+            gap: 2px;
+        }
+
+        .view-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #cbd5e1;
+            font-size: 9px;
+            font-weight: 600;
+            padding: 3px 7px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .view-btn:hover, .view-btn.active {
+            background: #2563eb;
+            color: #ffffff;
+            border-color: #3b82f6;
+        }
+
+        .toggle-boxes-btn {
+            background: rgba(234, 88, 12, 0.18);
+            border: 1px solid rgba(234, 88, 12, 0.4);
+            color: #fb923c;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .toggle-boxes-btn.off {
+            background: rgba(100, 116, 139, 0.2);
+            border-color: rgba(100, 116, 139, 0.3);
+            color: #94a3b8;
+        }
+
+        .intensity-legend {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-scale-lbl {
+            font-size: 8px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .turbo-gradient-bar {
+            width: 60px;
+            height: 9px;
+            border-radius: 3px;
+            background: linear-gradient(to right, #30123b, #4662d7, #28bbfc, #a2fc3c, #fb7f24, #d82626);
+            border: 1px solid rgba(255,255,255,0.25);
+        }
+
+        /* ── LiDAR Flow Bottom Metrics Strip ───────────────────────────────── */
+        .lidarflow-metrics-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 7px 14px;
+            margin-top: 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9.5px;
+        }
+
+        .lf-metric {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .lf-k {
+            font-size: 8px;
+            color: var(--text-muted);
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .lf-v {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-main);
         }
 
         /* ── LiDAR Scan Upload Panel (Strictly LiDAR-Only) ─────────────────── */
@@ -953,7 +1101,7 @@
                     <canvas id="gridCanvas"></canvas>
                 </div>
 
-                <!-- HUD Overlays -->
+                <!-- HUD Overlays (Top Status Bar) -->
                 <div class="hud-overlay-top">
                     <div class="hud-tags-group">
                         <span class="canvas-tag" id="tagPointsCount">POINTS: —</span>
@@ -961,11 +1109,8 @@
                         <span class="canvas-tag">60 FPS WEBGL</span>
                     </div>
 
-                    <!-- Color Mode Selector -->
-                    <div class="color-mode-select">
-                        <button class="color-opt-btn" id="btnModeIntensity">Intensity</button>
-                        <button class="color-opt-btn active" id="btnModeSemantics">Semantics</button>
-                        <button class="color-opt-btn" id="btnModeElevation">Elevation</button>
+                    <div class="hud-tags-group">
+                        <span class="canvas-tag" id="tagRenderQuality" style="color:var(--primary); font-weight:700;">TURBO INTENSITY · HQ CIRCULAR</span>
                     </div>
                 </div>
 
@@ -987,6 +1132,67 @@
                         <span class="legend-count" id="countLegendDynamic">—</span>
                     </div>
                 </div>
+
+                <!-- HUD Overlays (Bottom Professional Sensor Controls Bar) -->
+                <div class="hud-overlay-bottom">
+                    <!-- Point Size Slider -->
+                    <div class="hud-control-group">
+                        <span class="hud-label">POINT SIZE</span>
+                        <input type="range" id="sliderPointSize" min="0.4" max="3.2" step="0.1" value="1.3" class="hud-slider" title="Adjust 3D point particle size">
+                        <span class="hud-slider-val" id="valPointSize">1.3</span>
+                    </div>
+
+                    <!-- Point Density / Count Decimation Slider -->
+                    <div class="hud-control-group">
+                        <span class="hud-label">DENSITY</span>
+                        <input type="range" id="sliderDensity" min="15" max="100" step="5" value="35" class="hud-slider" title="Decrease point count to prevent overwhelming clutter">
+                        <span class="hud-slider-val" id="valDensity">35%</span>
+                    </div>
+
+                    <!-- Color Mode Selector -->
+                    <div class="hud-control-group">
+                        <span class="hud-label">COLOUR</span>
+                        <div class="color-mode-select">
+                            <button class="color-opt-btn active" id="btnModeIntensity" title="Turbo Intensity Colormap (highlights lane stripes)">Intensity</button>
+                            <button class="color-opt-btn" id="btnModeSemantics" title="PointNet++ Semantic Detections">Semantics</button>
+                            <button class="color-opt-btn" id="btnModeElevation" title="Z Elevation Height Map">Height</button>
+                        </div>
+                    </div>
+
+                    <!-- Camera View Presets -->
+                    <div class="hud-control-group">
+                        <span class="hud-label">VIEW</span>
+                        <div class="view-preset-group">
+                            <button class="view-btn" id="btnViewIso" title="Isometric 3D View">Iso</button>
+                            <button class="view-btn" id="btnViewTop" title="Top-Down Bird's Eye View (Best for road lanes)">Top</button>
+                            <button class="view-btn" id="btnViewFront" title="Ego Forward View">Front</button>
+                            <button class="view-btn" id="btnViewSide" title="Side Profile View">Side</button>
+                        </div>
+                    </div>
+
+                    <!-- 3D Bounding Boxes Toggle -->
+                    <div class="hud-control-group">
+                        <button class="toggle-boxes-btn" id="btnToggleBoxes" title="Toggle 3D Bounding Boxes ON/OFF">
+                            📦 Boxes: ON
+                        </button>
+                    </div>
+
+                    <!-- Turbo Intensity Scale Bar -->
+                    <div class="intensity-legend" id="intensityLegend">
+                        <span class="legend-scale-lbl">low</span>
+                        <div class="turbo-gradient-bar" title="Turbo Colormap: Dark Blue (Asphalt) -> Bright Yellow (Lanes)"></div>
+                        <span class="legend-scale-lbl">high</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom LiDAR Flow Metrics Strip -->
+            <div class="lidarflow-metrics-bar">
+                <div class="lf-metric"><span class="lf-k">POINTS</span><span class="lf-v" id="lfMetricPoints">—</span></div>
+                <div class="lf-metric"><span class="lf-k">RENDERED</span><span class="lf-v" id="lfMetricRendered">—</span></div>
+                <div class="lf-metric"><span class="lf-k">BOUNDING BOX</span><span class="lf-v" id="lfMetricBBox">60.0 × 20.4 × 1.7 m</span></div>
+                <div class="lf-metric"><span class="lf-k">FIELDS</span><span class="lf-v" id="lfMetricFields">x, y, z, intensity, class</span></div>
+                <div class="lf-metric"><span class="lf-k">COLORMAP</span><span class="lf-v" id="lfMetricColormap" style="color:#38bdf8;">Turbo Intensity</span></div>
             </div>
         </section>
 
@@ -1149,24 +1355,18 @@
                 document.body.classList.add('dark-theme');
                 if (themeIcon) themeIcon.textContent = '🌙';
                 if (themeLabel) themeLabel.textContent = 'Dark';
-                if (scene) scene.background = new THREE.Color(0x020408);
-                if (gridHelper) {
-                    scene.remove(gridHelper);
-                    gridHelper = new THREE.GridHelper(100, 50, 0x00f3ff, 0x1e293b);
-                    gridHelper.position.y = -1.60;
-                    scene.add(gridHelper);
-                }
             } else {
                 document.body.classList.remove('dark-theme');
                 if (themeIcon) themeIcon.textContent = '☀️';
                 if (themeLabel) themeLabel.textContent = 'Light';
-                if (scene) scene.background = new THREE.Color(0xf1f5f9);
-                if (gridHelper) {
-                    scene.remove(gridHelper);
-                    gridHelper = new THREE.GridHelper(100, 50, 0x2563eb, 0xd8e0ea);
-                    gridHelper.position.y = -1.60;
-                    scene.add(gridHelper);
-                }
+            }
+            // 3D sensor viewport maintains darkroom contrast for high-fidelity LiDAR rendering
+            if (scene) scene.background = new THREE.Color(0x080b13);
+            if (gridHelper) {
+                scene.remove(gridHelper);
+                gridHelper = new THREE.GridHelper(100, 50, 0x1d4ed8, 0x141f33);
+                gridHelper.position.y = -1.60;
+                scene.add(gridHelper);
             }
             if (activeTab === 'BEV') render2DGrid();
         }
@@ -1177,9 +1377,13 @@
             });
         }
 
-        // State variables (Strictly LiDAR-Only)
+        // State variables (Strictly LiDAR-Only, Professional Sensor Controls)
         let activeTab = '3D'; // '3D' or 'BEV'
-        let colorMode = 'semantics'; // 'semantics', 'intensity', 'elevation'
+        let colorMode = 'intensity'; // 'intensity' (default, Turbo colormap like LidarFlow), 'semantics', 'elevation'
+        let currentPointSize = 1.3;
+        let currentDensityPercent = 35; // Default 35% decimation to decrease point count and eliminate overwhelming clutter
+        let show3DBoxes = true;
+        let pointCircleTexture = null;
         
         let lidarPoints = [];
         let gridCells = [];     // Active 2.5D cells from C++ Quadtree Grid
@@ -1223,19 +1427,55 @@
         }
 
         // =========================================================================
-        // THREE.JS 3D SPATIAL ENGINE SETUP
+        // THREE.JS 3D SPATIAL ENGINE SETUP (HIGH-FIDELITY SENSOR CANVAS)
         // =========================================================================
         let scene, camera, renderer;
         let lidarPointCloud = null;
         let boundingBoxesGroup = null;
+        let staticStructuresGroup = null;
         let gridHelper = null;
+
+        // Generate circular anti-aliased particle texture on offscreen canvas
+        function createPointTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+            grad.addColorStop(0.65, 'rgba(255, 255, 255, 0.95)');
+            grad.addColorStop(0.85, 'rgba(255, 255, 255, 0.35)');
+            grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(32, 32, 32, 0, Math.PI * 2);
+            ctx.fill();
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.needsUpdate = true;
+            return tex;
+        }
+
+        // Official Google Turbo colormap polynomial approximation:
+        // Maps [0, 1] smoothly from deep indigo -> cyan -> emerald -> vibrant yellow (lanes) -> red
+        function getTurboColor(t) {
+            t = Math.max(0, Math.min(1, t));
+            const r = 0.1357 + t * (4.5974 - t * (42.6813 - t * (152.581 - t * (216.924 - t * 105.811))));
+            const g = 0.0914 + t * (2.1856 + t * (4.8052 - t * (14.0195 + t * (4.2109 + t * 2.7747))));
+            const b = 0.1067 + t * (12.5732 - t * (85.1971 - t * (223.636 - t * (272.766 - t * 121.782))));
+            return [
+                Math.max(0, Math.min(1, r)),
+                Math.max(0, Math.min(1, g)),
+                Math.max(0, Math.min(1, b))
+            ];
+        }
 
         function initThree() {
             const container = document.getElementById('threeContainer');
             if (!container) return;
 
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xf1f5f9);
+            // Sleek darkroom sensor canvas (exact aesthetic of LidarFlow / CloudCompare)
+            scene.background = new THREE.Color(0x080b13);
 
             const aspect = container.clientWidth / container.clientHeight;
             camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
@@ -1246,20 +1486,22 @@
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             container.appendChild(renderer.domElement);
 
+            pointCircleTexture = createPointTexture();
+
             // 3D Reference Grid (Ground plane at Y = -1.60m)
-            gridHelper = new THREE.GridHelper(100, 50, 0x2563eb, 0xd8e0ea);
+            gridHelper = new THREE.GridHelper(100, 50, 0x1d4ed8, 0x141f33);
             gridHelper.position.y = -1.60;
             scene.add(gridHelper);
 
             // Ego Vehicle Marker (At origin)
             const egoGeo = new THREE.BoxGeometry(2.0, 1.5, 4.5);
             const egoEdges = new THREE.EdgesGeometry(egoGeo);
-            const egoMat = new THREE.LineBasicMaterial({ color: 0x1d4ed8, linewidth: 2 });
+            const egoMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2 });
             const egoBox = new THREE.LineSegments(egoEdges, egoMat);
             egoBox.position.set(0, -0.85, 0);
             scene.add(egoBox);
 
-            const egoMeshMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.18 });
+            const egoMeshMat = new THREE.MeshBasicMaterial({ color: 0x0284c7, transparent: true, opacity: 0.15 });
             const egoMesh = new THREE.Mesh(egoGeo, egoMeshMat);
             egoMesh.position.set(0, -0.85, 0);
             scene.add(egoMesh);
@@ -1349,8 +1591,6 @@
             }
         }
 
-        let staticStructuresGroup = null;
-
         // Visibility / Isolation Filters for Detections
         let visFilter = {
             road: true,
@@ -1399,6 +1639,8 @@
             let countRoad = 0, countStatic = 0, countDynamic = 0;
             const roadElevations = [];
             let roadMinX = 999, roadMaxX = -999;
+            let minInt = Infinity, maxInt = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
 
             for (let i = 0; i < n; i++) {
                 const pt = lidarPoints[i];
@@ -1412,15 +1654,35 @@
                 } else if (pt.semClass === 2) {
                     countDynamic++;
                 }
+
+                const v = pt.intensity !== undefined ? pt.intensity : 0.5;
+                if (v < minInt) minInt = v;
+                if (v > maxInt) maxInt = v;
+                if (pt.y < minY) minY = pt.y;
+                if (pt.y > maxY) maxY = pt.y;
             }
 
-            // Filter points based on active visibility toggles
+            if (!isFinite(minInt) || !isFinite(maxInt) || maxInt === minInt) { minInt = 0; maxInt = 1; }
+            if (!isFinite(minY) || !isFinite(maxY) || maxY === minY) { minY = -2; maxY = 2; }
+            const intRange = (maxInt - minInt > 0.0001) ? (maxInt - minInt) : 1.0;
+            const yRange = (maxY - minY > 0.01) ? (maxY - minY) : 1.0;
+
+            // Decimation stride based on user's Density Slider:
+            // Prevents overwhelming dense dots clustering into solid blocks
+            const stride = (currentDensityPercent >= 100) ? 1 : Math.max(1, Math.round(100 / currentDensityPercent));
+
+            // Filter points based on active visibility toggles & density decimation
             const filteredPts = [];
             for (let i = 0; i < n; i++) {
                 const pt = lidarPoints[i];
                 if (pt.semClass === 0 && !visFilter.road) continue;
                 if (pt.semClass === 1 && !visFilter.static) continue;
                 if (pt.semClass === 2 && !visFilter.dynamic) continue;
+
+                // Always retain 100% of dynamic obstacles, stride-decimate background terrain
+                if (pt.semClass !== 2 && stride > 1 && (i % stride !== 0)) {
+                    continue;
+                }
                 filteredPts.push(pt);
             }
 
@@ -1434,24 +1696,28 @@
                 positions[i * 3 + 1] = pt.y;
                 positions[i * 3 + 2] = pt.z;
 
-                let r = 0.05, g = 0.72, b = 0.42;
+                let r = 0.06, g = 0.72, b = 0.50;
 
-                if (colorMode === 'semantics') {
-                    if (pt.semClass === 0) {
-                        r = 0.05; g = 0.72; b = 0.42;
-                    } else if (pt.semClass === 1) {
-                        r = 0.15; g = 0.45; b = 0.95;
-                    } else if (pt.semClass === 2) {
-                        r = 0.95; g = 0.38; b = 0.05;
-                    } else {
-                        r = 0.45; g = 0.50; b = 0.60;
-                    }
+                if (colorMode === 'intensity') {
+                    // Google Turbo colormap for intensity: dark blue asphalt -> bright yellow lane stripes
+                    const normVal = Math.max(0, Math.min(1, (pt.intensity - minInt) / intRange));
+                    const [tr, tg, tb] = getTurboColor(normVal);
+                    r = tr; g = tg; b = tb;
                 } else if (colorMode === 'elevation') {
-                    const normY = THREE.MathUtils.clamp((pt.y + 2.5) / 5.0, 0, 1);
-                    r = normY; g = 1.0 - Math.abs(normY - 0.5) * 2; b = 1.0 - normY;
-                } else if (colorMode === 'intensity') {
-                    const val = THREE.MathUtils.clamp(pt.intensity || 0.5, 0.1, 1.0);
-                    r = 0.1 + val * 0.8; g = 0.2 + val * 0.6; b = 0.3 + val * 0.4;
+                    // Google Turbo colormap for elevation height
+                    const normY = Math.max(0, Math.min(1, (pt.y - minY) / yRange));
+                    const [er, eg, eb] = getTurboColor(normY);
+                    r = er; g = eg; b = eb;
+                } else if (colorMode === 'semantics') {
+                    if (pt.semClass === 0) {
+                        r = 0.06; g = 0.72; b = 0.50; // Emerald Green Road
+                    } else if (pt.semClass === 1) {
+                        r = 0.23; g = 0.51; b = 0.96; // Cobalt Blue Static Structures
+                    } else if (pt.semClass === 2) {
+                        r = 0.98; g = 0.45; b = 0.09; // Cyber Orange Dynamic Obstacles
+                    } else {
+                        r = 0.55; g = 0.60; b = 0.70;
+                    }
                 }
 
                 colors[i * 3]     = r;
@@ -1465,11 +1731,13 @@
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
                 const material = new THREE.PointsMaterial({
-                    size: 2.4,
+                    size: currentPointSize,
+                    map: pointCircleTexture,
                     vertexColors: true,
                     sizeAttenuation: true,
                     transparent: true,
-                    opacity: 0.95
+                    alphaTest: 0.015,
+                    depthWrite: false
                 });
 
                 lidarPointCloud = new THREE.Points(geometry, material);
@@ -1480,11 +1748,33 @@
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 lidarPointCloud.geometry = geometry;
+                lidarPointCloud.material.size = currentPointSize;
+                if (!lidarPointCloud.material.map && pointCircleTexture) {
+                    lidarPointCloud.material.map = pointCircleTexture;
+                    lidarPointCloud.material.transparent = true;
+                    lidarPointCloud.material.alphaTest = 0.015;
+                    lidarPointCloud.material.depthWrite = false;
+                }
+                lidarPointCloud.material.needsUpdate = true;
                 lidarPointCloud.visible = true;
             }
 
             // HUD Badge & Filter Count Updates
-            tagPointsCount.innerText = `POINTS: ${visibleCount.toLocaleString()} / ${n.toLocaleString()} (🟢 Road: ${countRoad.toLocaleString()} | 🔵 Structures: ${countStatic.toLocaleString()} | 🟠 Vehicles: ${countDynamic.toLocaleString()})`;
+            tagPointsCount.innerText = `POINTS: ${visibleCount.toLocaleString()} rendered / ${n.toLocaleString()} total (🟢 Road: ${countRoad.toLocaleString()} | 🔵 Structures: ${countStatic.toLocaleString()} | 🟠 Vehicles: ${countDynamic.toLocaleString()})`;
+
+            const valDensity = document.getElementById('valDensity');
+            if (valDensity) valDensity.innerText = `${currentDensityPercent}% (${(visibleCount / 1000).toFixed(1)}k)`;
+
+            const lfPts = document.getElementById('lfMetricPoints');
+            const lfRend = document.getElementById('lfMetricRendered');
+            const lfBBox = document.getElementById('lfMetricBBox');
+            if (lfPts) lfPts.innerText = `${(n / 1000).toFixed(1)}k pts`;
+            if (lfRend) lfRend.innerText = `${(visibleCount / 1000).toFixed(1)}k (${currentDensityPercent}%)`;
+            if (lfBBox && isFinite(minY) && isFinite(maxY)) {
+                const dx = Math.abs(roadMaxX - roadMinX);
+                const dy = Math.abs(maxY - minY);
+                lfBBox.innerText = `60.0 × ${(dx < 200 && dx > 0 ? dx.toFixed(1) : '20.4')} × ${dy.toFixed(2)} m`;
+            }
 
             const lgRoad = document.getElementById('countLegendRoad');
             const lgStatic = document.getElementById('countLegendStatic');
@@ -1537,13 +1827,14 @@
                 staticStructuresGroup.remove(staticStructuresGroup.children[0]);
             }
 
+            if (!show3DBoxes) return;
             if (!visFilter.static) return;
 
-            // Extract high-occupancy static obstacle cells
-            const staticCells = gridCells.filter(c => c.class === 1 && c.occ > 0.35);
+            // Only extract prominent elevated static obstacles (elevated above road surface)
+            const staticCells = gridCells.filter(c => c.class === 1 && c.occ > 0.45 && (c.elev > 0.6 || c.elev < -2.2));
             staticCells.sort((a, b) => (b.elev || 0) - (a.elev || 0));
 
-            const maxStaticToDraw = Math.min(staticCells.length, 36);
+            const maxStaticToDraw = Math.min(staticCells.length, 30);
             const step = Math.max(1, Math.floor(staticCells.length / maxStaticToDraw));
 
             const staticStructures = [];
@@ -1551,20 +1842,15 @@
             for (let i = 0; i < staticCells.length; i += step) {
                 const c = staticCells[i];
                 const sz = Math.max(0.6, c.res || 0.5);
-                const height = Math.max(0.9, (c.elev || 0.5) + 1.6);
+                const height = Math.max(1.0, (c.elev || 0.5) + 1.6);
                 const boxGeo = new THREE.BoxGeometry(sz, height, sz);
                 const edgeGeo = new THREE.EdgesGeometry(boxGeo);
-                const edgeMat = new THREE.LineBasicMaterial({ color: 0x2563eb, linewidth: 2 });
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0x3b82f6, linewidth: 1.5 });
                 const edgeBox = new THREE.LineSegments(edgeGeo, edgeMat);
                 
                 // Position: X is right (-c.y), Y is up (height/2 - 1.60), Z is forward (c.x)
                 edgeBox.position.set(-c.y, height / 2 - 1.60, c.x);
                 staticStructuresGroup.add(edgeBox);
-
-                const fillMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.16 });
-                const fillMesh = new THREE.Mesh(boxGeo, fillMat);
-                fillMesh.position.set(-c.y, height / 2 - 1.60, c.x);
-                staticStructuresGroup.add(fillMesh);
 
                 let type = 'Roadside Structure';
                 if (c.elev > 1.8) type = 'Building Facade';
@@ -1617,6 +1903,7 @@
                 boundingBoxesGroup.remove(boundingBoxesGroup.children[0]);
             }
 
+            if (!show3DBoxes) return;
             if (!visFilter.dynamic) return;
 
             tracksData.forEach(tr => {
@@ -1625,12 +1912,12 @@
                 const bl = tr.l || 4.5;
                 const boxGeo = new THREE.BoxGeometry(bw, bh, bl);
                 const edgeGeo = new THREE.EdgesGeometry(boxGeo);
-                const edgeMat = new THREE.LineBasicMaterial({ color: 0xea580c, linewidth: 2.5 });
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0xf97316, linewidth: 2.0 });
                 const box = new THREE.LineSegments(edgeGeo, edgeMat);
                 box.position.set(tr.x, (tr.y || -0.8) + bh / 2, tr.z);
                 boundingBoxesGroup.add(box);
 
-                const fillMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.18 });
+                const fillMat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.10 });
                 const fillMesh = new THREE.Mesh(boxGeo, fillMat);
                 fillMesh.position.set(tr.x, (tr.y || -0.8) + bh / 2, tr.z);
                 boundingBoxesGroup.add(fillMesh);
@@ -2100,23 +2387,133 @@
             render2DGrid();
         });
 
+        // Point Size slider
+        const sliderPointSize = document.getElementById('sliderPointSize');
+        const valPointSize = document.getElementById('valPointSize');
+        if (sliderPointSize) {
+            sliderPointSize.addEventListener('input', (e) => {
+                currentPointSize = parseFloat(e.target.value) || 1.3;
+                if (valPointSize) valPointSize.innerText = currentPointSize.toFixed(1);
+                if (lidarPointCloud && lidarPointCloud.material) {
+                    lidarPointCloud.material.size = currentPointSize;
+                    lidarPointCloud.material.needsUpdate = true;
+                }
+            });
+        }
+
+        // Density Decimation slider (Decreases point count so dots never overwhelm)
+        const sliderDensity = document.getElementById('sliderDensity');
+        const valDensity = document.getElementById('valDensity');
+        if (sliderDensity) {
+            sliderDensity.addEventListener('input', (e) => {
+                currentDensityPercent = parseInt(e.target.value) || 35;
+                if (valDensity) valDensity.innerText = `${currentDensityPercent}%`;
+                updateThreePointCloud();
+            });
+        }
+
+        // Toggle 3D Bounding Boxes
+        const btnToggleBoxes = document.getElementById('btnToggleBoxes');
+        if (btnToggleBoxes) {
+            btnToggleBoxes.addEventListener('click', () => {
+                show3DBoxes = !show3DBoxes;
+                btnToggleBoxes.innerText = show3DBoxes ? '📦 Boxes: ON' : '📦 Boxes: OFF';
+                btnToggleBoxes.classList.toggle('off', !show3DBoxes);
+                updateStaticStructuresIn3D();
+                updateTrackBoundingBoxes();
+                appendLog(`3D Bounding Boxes: ${show3DBoxes ? 'ENABLED' : 'DISABLED'}`, 'info');
+            });
+        }
+
+        // Camera View Presets (LidarFlow-grade angles)
+        const btnViewIso = document.getElementById('btnViewIso');
+        const btnViewTop = document.getElementById('btnViewTop');
+        const btnViewFront = document.getElementById('btnViewFront');
+        const btnViewSide = document.getElementById('btnViewSide');
+
+        function setCameraPreset(preset) {
+            if (!camera) return;
+            [btnViewIso, btnViewTop, btnViewFront, btnViewSide].forEach(b => {
+                if (b) b.classList.remove('active');
+            });
+
+            if (preset === 'top') {
+                if (btnViewTop) btnViewTop.classList.add('active');
+                cameraTarget.set(0, -1.0, 14);
+                spherical.radius = 42;
+                spherical.phi = 0.02; // Orthogonal top-down bird's-eye view (reveals lane stripes)
+                spherical.theta = Math.PI;
+            } else if (preset === 'iso') {
+                if (btnViewIso) btnViewIso.classList.add('active');
+                cameraTarget.set(0, -1.0, 14);
+                spherical.radius = 36;
+                spherical.phi = Math.PI / 3.8;
+                spherical.theta = Math.PI * 0.92;
+            } else if (preset === 'front') {
+                if (btnViewFront) btnViewFront.classList.add('active');
+                cameraTarget.set(0, 0, 24);
+                spherical.radius = 28;
+                spherical.phi = Math.PI / 2.2;
+                spherical.theta = Math.PI;
+            } else if (preset === 'side') {
+                if (btnViewSide) btnViewSide.classList.add('active');
+                cameraTarget.set(0, 0, 14);
+                spherical.radius = 38;
+                spherical.phi = Math.PI / 2.2;
+                spherical.theta = Math.PI / 2;
+            }
+            updateCameraPosition();
+            appendLog(`3D Camera View: ${preset.toUpperCase()}`, 'info');
+        }
+
+        if (btnViewIso) btnViewIso.addEventListener('click', () => setCameraPreset('iso'));
+        if (btnViewTop) btnViewTop.addEventListener('click', () => setCameraPreset('top'));
+        if (btnViewFront) btnViewFront.addEventListener('click', () => setCameraPreset('front'));
+        if (btnViewSide) btnViewSide.addEventListener('click', () => setCameraPreset('side'));
+
         // Color Mode Selector
         const btnModeSemantics = document.getElementById('btnModeSemantics');
         const btnModeIntensity = document.getElementById('btnModeIntensity');
         const btnModeElevation = document.getElementById('btnModeElevation');
+        const intensityLegend = document.getElementById('intensityLegend');
+        const lfMetricColormap = document.getElementById('lfMetricColormap');
 
         function setColorMode(mode) {
             colorMode = mode;
-            [btnModeSemantics, btnModeIntensity, btnModeElevation].forEach(b => b.classList.remove('active'));
-            if (mode === 'semantics') btnModeSemantics.classList.add('active');
-            if (mode === 'intensity') btnModeIntensity.classList.add('active');
-            if (mode === 'elevation') btnModeElevation.classList.add('active');
+            [btnModeSemantics, btnModeIntensity, btnModeElevation].forEach(b => {
+                if (b) b.classList.remove('active');
+            });
+            if (mode === 'semantics') {
+                if (btnModeSemantics) btnModeSemantics.classList.add('active');
+                if (hudLegend) hudLegend.style.display = 'flex';
+                if (intensityLegend) intensityLegend.style.display = 'none';
+                if (lfMetricColormap) {
+                    lfMetricColormap.innerText = 'Semantic Classes';
+                    lfMetricColormap.style.color = '#10b981';
+                }
+            } else if (mode === 'intensity') {
+                if (btnModeIntensity) btnModeIntensity.classList.add('active');
+                if (hudLegend) hudLegend.style.display = 'none';
+                if (intensityLegend) intensityLegend.style.display = 'flex';
+                if (lfMetricColormap) {
+                    lfMetricColormap.innerText = 'Turbo Intensity';
+                    lfMetricColormap.style.color = '#38bdf8';
+                }
+            } else if (mode === 'elevation') {
+                if (btnModeElevation) btnModeElevation.classList.add('active');
+                if (hudLegend) hudLegend.style.display = 'none';
+                if (intensityLegend) intensityLegend.style.display = 'flex';
+                if (lfMetricColormap) {
+                    lfMetricColormap.innerText = 'Turbo Height';
+                    lfMetricColormap.style.color = '#a855f7';
+                }
+            }
             updateThreePointCloud();
         }
 
-        btnModeSemantics.addEventListener('click', () => setColorMode('semantics'));
-        btnModeIntensity.addEventListener('click', () => setColorMode('intensity'));
-        btnModeElevation.addEventListener('click', () => setColorMode('elevation'));
+        if (btnModeSemantics) btnModeSemantics.addEventListener('click', () => setColorMode('semantics'));
+        if (btnModeIntensity) btnModeIntensity.addEventListener('click', () => setColorMode('intensity'));
+        if (btnModeElevation) btnModeElevation.addEventListener('click', () => setColorMode('elevation'));
 
         // Initialize Everything on Load
         window.addEventListener('DOMContentLoaded', () => {
