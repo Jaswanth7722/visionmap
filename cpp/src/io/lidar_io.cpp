@@ -17,7 +17,9 @@ std::vector<std::string> LidarIO::listSequenceScans(const std::string& dir) {
     }
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
         if (!entry.is_regular_file(ec)) continue;
-        if (entry.path().extension() == ".bin") {
+        auto ext = entry.path().extension().string();
+        for (char& c : ext) c = static_cast<char>(std::tolower(c));
+        if (ext == ".bin" || ext == ".pcd" || ext == ".ply") {
             scans.push_back(entry.path().string());
         }
     }

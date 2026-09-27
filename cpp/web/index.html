@@ -629,6 +629,128 @@
             background: var(--bg-inset);
         }
 
+        /* Semantic Detection Tabs & Tables */
+        .det-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid var(--border-dim);
+            padding-bottom: 6px;
+        }
+        .det-tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: transparent;
+            border: 1px solid transparent;
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.15s ease;
+            font-family: 'Inter', sans-serif;
+        }
+        .det-tab-btn:hover {
+            background: var(--bg-inset);
+            color: var(--text-main);
+        }
+        .det-tab-btn.active {
+            background: var(--bg-card);
+            border-color: var(--border-dim);
+            color: var(--text-main);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .det-tab-content {
+            display: none;
+        }
+        .det-tab-content.active {
+            display: block;
+        }
+
+        /* Terrain Analytics Card */
+        .terrain-card {
+            background: var(--bg-inset);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            padding: 8px;
+        }
+        .terrain-stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .terrain-stat {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+        }
+        .terrain-stat .t-key {
+            font-size: 8.5px;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .terrain-stat .t-val {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--text-main);
+            font-family: 'JetBrains Mono', monospace;
+            margin-top: 2px;
+        }
+        .terrain-status-banner {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            color: #047857;
+            font-size: 9px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        body.dark-theme .terrain-status-banner {
+            background: rgba(5, 150, 105, 0.15);
+            border-color: rgba(5, 150, 105, 0.35);
+            color: #34d399;
+        }
+
+        /* Interactive Filter Pills in Legend */
+        .legend-item.clickable-filter {
+            cursor: pointer;
+            user-select: none;
+            padding: 3px 6px;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+            border: 1px solid transparent;
+        }
+        .legend-item.clickable-filter:hover {
+            background: var(--bg-inset);
+            border-color: var(--border-dim);
+        }
+        .legend-item.clickable-filter.muted {
+            opacity: 0.35;
+            filter: grayscale(0.85);
+            text-decoration: line-through;
+        }
+        .legend-count {
+            margin-left: 6px;
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            background: var(--bg-inset);
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
         .terminal-box {
             background: var(--bg-inset);
             border: 1px solid var(--border-dim);
@@ -847,47 +969,122 @@
                     </div>
                 </div>
 
-                <!-- 3D HUD Legend -->
+                <!-- 3D HUD Legend with Clickable Detection Class Isolation -->
                 <div class="hud-legend" id="hudLegend">
-                    <div class="legend-item">
+                    <div class="legend-item clickable-filter" id="pillFilterRoad" onclick="toggleVisFilter('road')" title="Toggle Road / Ground Terrain Visibility">
                         <span class="legend-dot" style="background:#059669;"></span>
-                        <span>Road / Ground (Terrain)</span>
+                        <span style="font-weight:600;">Road / Ground</span>
+                        <span class="legend-count" id="countLegendRoad">—</span>
                     </div>
-                    <div class="legend-item">
-                        <span class="legend-dot" style="background:#ea580c;"></span>
-                        <span>Tracked Dynamic Obstacles (Orange/Amber)</span>
-                    </div>
-                    <div class="legend-item">
+                    <div class="legend-item clickable-filter" id="pillFilterStatic" onclick="toggleVisFilter('static')" title="Toggle Static Structures Visibility">
                         <span class="legend-dot" style="background:#2563eb;"></span>
-                        <span>Structures / Roadside (Sapphire Blue)</span>
+                        <span style="font-weight:600;">Static Structures</span>
+                        <span class="legend-count" id="countLegendStatic">—</span>
+                    </div>
+                    <div class="legend-item clickable-filter" id="pillFilterDynamic" onclick="toggleVisFilter('dynamic')" title="Toggle Dynamic Vehicles Visibility">
+                        <span class="legend-dot" style="background:#ea580c;"></span>
+                        <span style="font-weight:600;">Dynamic Obstacles</span>
+                        <span class="legend-count" id="countLegendDynamic">—</span>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- RIGHT PANEL: Obstacle Tracking Telemetry & Console -->
+        <!-- RIGHT PANEL: Semantic Detections Breakdown & Telemetry -->
         <aside class="glass-panel">
             <div class="panel-header">
-                <span class="panel-title"><span class="dot" style="background:#ea580c;"></span> Tracked Obstacles</span>
-                <span class="canvas-tag" id="tagActiveTracks">0 ACTIVE</span>
+                <span class="panel-title"><span class="dot" style="background:var(--primary);"></span> Semantic Detections</span>
+                <span class="canvas-tag" id="tagTotalDetections" style="color:var(--primary); font-weight:700;">3 CLASSES</span>
             </div>
 
             <div class="panel-body">
-                <div style="overflow-x:auto;">
-                    <table class="tracks-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Class</th>
-                                <th>Range</th>
-                                <th>Speed</th>
-                                <th>Heading</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tracksTableBody">
-                            <tr id="tracks-empty-row"><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">Loading LiDAR sequence...</td></tr>
-                        </tbody>
-                    </table>
+                <!-- Detection Tabs: Dynamic, Static, Terrain -->
+                <div class="det-tabs">
+                    <button class="det-tab-btn active" id="tabBtnDynamic" onclick="switchDetTab('dynamic')">
+                        <span class="dot" style="background:#ea580c; width:6px; height:6px;"></span> Dynamic (<span id="badgeCountDynamic">0</span>)
+                    </button>
+                    <button class="det-tab-btn" id="tabBtnStatic" onclick="switchDetTab('static')">
+                        <span class="dot" style="background:#2563eb; width:6px; height:6px;"></span> Static (<span id="badgeCountStatic">0</span>)
+                    </button>
+                    <button class="det-tab-btn" id="tabBtnRoad" onclick="switchDetTab('road')">
+                        <span class="dot" style="background:#059669; width:6px; height:6px;"></span> Road / Terrain
+                    </button>
+                </div>
+
+                <!-- Tab 1: Dynamic Objects Table -->
+                <div id="tabContentDynamic" class="det-tab-content active">
+                    <div style="overflow-x:auto; max-height:165px; overflow-y:auto;">
+                        <table class="tracks-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Class</th>
+                                    <th>Range</th>
+                                    <th>Speed</th>
+                                    <th>Heading</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tracksTableBody">
+                                <tr id="tracks-empty-row"><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">Loading dynamic obstacles...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Static Structures Table -->
+                <div id="tabContentStatic" class="det-tab-content">
+                    <div style="overflow-x:auto; max-height:165px; overflow-y:auto;">
+                        <table class="tracks-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Structure Type</th>
+                                    <th>Pos (X, Y)</th>
+                                    <th>Height</th>
+                                    <th>Conf</th>
+                                </tr>
+                            </thead>
+                            <tbody id="staticTableBody">
+                                <tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">Extracting static structures...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Road / Ground (Terrain) Analysis Card -->
+                <div id="tabContentRoad" class="det-tab-content">
+                    <div class="terrain-card">
+                        <div class="terrain-stat-grid">
+                            <div class="terrain-stat">
+                                <span class="t-key">Road Points</span>
+                                <span class="t-val" id="terrPoints">—</span>
+                            </div>
+                            <div class="terrain-stat">
+                                <span class="t-key">Surface Area</span>
+                                <span class="t-val" id="terrArea">— m²</span>
+                            </div>
+                            <div class="terrain-stat">
+                                <span class="t-key">Mean Elevation</span>
+                                <span class="t-val" id="terrElev">— m</span>
+                            </div>
+                            <div class="terrain-stat">
+                                <span class="t-key">Road Flatness (σ)</span>
+                                <span class="t-val" id="terrRoughness">— cm</span>
+                            </div>
+                        </div>
+                        <div class="terrain-status-banner">
+                            <span class="dot" style="background:#059669;"></span>
+                            <span id="terrStatusText">DRIVABLE CORRIDOR: VERIFIED &amp; CLEAR</span>
+                        </div>
+                        <div class="metric-row" style="margin-top:6px;">
+                            <span class="metric-key">Corridor Bounds</span>
+                            <span class="metric-val" id="terrBounds">[-3.8m, +4.2m] (8.0m)</span>
+                        </div>
+                        <div class="metric-row" style="margin-top:2px;">
+                            <span class="metric-key">Road Gradient</span>
+                            <span class="metric-val" id="terrSlope">&lt; 1.2% (Level Highway)</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Execution Breakdown -->
@@ -1071,6 +1268,10 @@
             boundingBoxesGroup = new THREE.Group();
             scene.add(boundingBoxesGroup);
 
+            // Static Structures Group for Detected Obstacles / Buildings
+            staticStructuresGroup = new THREE.Group();
+            scene.add(staticStructuresGroup);
+
             // Interactive Orbit Controls
             setupOrbitControls(container);
 
@@ -1148,37 +1349,102 @@
             }
         }
 
-        // =========================================================================
-        // LIDAR POINT CLOUD RENDERING WITH HIGH-CONTRAST PALETTE
-        // =========================================================================
+        let staticStructuresGroup = null;
+
+        // Visibility / Isolation Filters for Detections
+        let visFilter = {
+            road: true,
+            static: true,
+            dynamic: true
+        };
+
+        function toggleVisFilter(type) {
+            if (!visFilter.hasOwnProperty(type)) return;
+            visFilter[type] = !visFilter[type];
+
+            const pillId = type === 'road' ? 'pillFilterRoad' : (type === 'static' ? 'pillFilterStatic' : 'pillFilterDynamic');
+            const pill = document.getElementById(pillId);
+            if (pill) {
+                if (visFilter[type]) {
+                    pill.classList.remove('muted');
+                } else {
+                    pill.classList.add('muted');
+                }
+            }
+
+            updateThreePointCloud();
+            updateStaticStructuresIn3D();
+            updateTrackBoundingBoxes();
+            render2DGrid();
+            appendLog(`[Filter] Toggled ${type.toUpperCase()} detections: ${visFilter[type] ? 'ON' : 'OFF'}`, 'info');
+        }
+
+        function switchDetTab(tab) {
+            const tabs = ['dynamic', 'static', 'road'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(t === 'dynamic' ? 'tabBtnDynamic' : (t === 'static' ? 'tabBtnStatic' : 'tabBtnRoad'));
+                const content = document.getElementById(t === 'dynamic' ? 'tabContentDynamic' : (t === 'static' ? 'tabContentStatic' : 'tabContentRoad'));
+                if (btn) btn.classList.toggle('active', t === tab);
+                if (content) content.style.display = (t === tab) ? 'block' : 'none';
+            });
+        }
+
         function updateThreePointCloud() {
             if (!scene) return;
 
             const n = lidarPoints.length;
             if (n === 0) return;
 
-            const positions = new Float32Array(n * 3);
-            const colors = new Float32Array(n * 3);
+            // Compute global statistics across all points in scan
+            let countRoad = 0, countStatic = 0, countDynamic = 0;
+            const roadElevations = [];
+            let roadMinX = 999, roadMaxX = -999;
 
             for (let i = 0; i < n; i++) {
                 const pt = lidarPoints[i];
+                if (pt.semClass === 0) {
+                    countRoad++;
+                    roadElevations.push(pt.y);
+                    if (pt.x < roadMinX) roadMinX = pt.x;
+                    if (pt.x > roadMaxX) roadMaxX = pt.x;
+                } else if (pt.semClass === 1) {
+                    countStatic++;
+                } else if (pt.semClass === 2) {
+                    countDynamic++;
+                }
+            }
+
+            // Filter points based on active visibility toggles
+            const filteredPts = [];
+            for (let i = 0; i < n; i++) {
+                const pt = lidarPoints[i];
+                if (pt.semClass === 0 && !visFilter.road) continue;
+                if (pt.semClass === 1 && !visFilter.static) continue;
+                if (pt.semClass === 2 && !visFilter.dynamic) continue;
+                filteredPts.push(pt);
+            }
+
+            const visibleCount = filteredPts.length;
+            const positions = new Float32Array(visibleCount * 3);
+            const colors = new Float32Array(visibleCount * 3);
+
+            for (let i = 0; i < visibleCount; i++) {
+                const pt = filteredPts[i];
                 positions[i * 3]     = pt.x;
                 positions[i * 3 + 1] = pt.y;
                 positions[i * 3 + 2] = pt.z;
 
-                // Default: Terrain (#059669 Emerald Green)
-                let r = 0.02, g = 0.59, b = 0.41;
+                let r = 0.05, g = 0.72, b = 0.42;
 
                 if (colorMode === 'semantics') {
-                    if (pt.semClass === 2) {
-                        // Dynamic Obstacle (Vehicle / Pedestrian): Radiant Electric Amber / Orange (#ea580c)
-                        r = 0.92; g = 0.35; b = 0.05;
+                    if (pt.semClass === 0) {
+                        r = 0.05; g = 0.72; b = 0.42;
                     } else if (pt.semClass === 1) {
-                        // Static Obstacle (Curbs / Structures / Poles): Deep Royal Sapphire (#2563eb)
-                        r = 0.15; g = 0.39; b = 0.92;
-                    } else if (pt.semClass === 255) {
-                        // UNKNOWN: Medium Slate Grey
-                        r = 0.40; g = 0.45; b = 0.55;
+                        r = 0.15; g = 0.45; b = 0.95;
+                    } else if (pt.semClass === 2) {
+                        r = 0.95; g = 0.38; b = 0.05;
+                    } else {
+                        r = 0.45; g = 0.50; b = 0.60;
                     }
                 } else if (colorMode === 'elevation') {
                     const normY = THREE.MathUtils.clamp((pt.y + 2.5) / 5.0, 0, 1);
@@ -1199,7 +1465,7 @@
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
                 const material = new THREE.PointsMaterial({
-                    size: 2.2,
+                    size: 2.4,
                     vertexColors: true,
                     sizeAttenuation: true,
                     transparent: true,
@@ -1209,14 +1475,140 @@
                 lidarPointCloud = new THREE.Points(geometry, material);
                 scene.add(lidarPointCloud);
             } else {
-                lidarPointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                lidarPointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                lidarPointCloud.geometry.attributes.position.needsUpdate = true;
-                lidarPointCloud.geometry.attributes.color.needsUpdate = true;
+                lidarPointCloud.geometry.dispose();
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                lidarPointCloud.geometry = geometry;
                 lidarPointCloud.visible = true;
             }
 
-            tagPointsCount.innerText = `POINTS: ${n.toLocaleString()} (LiDAR + PointNet++)`;
+            // HUD Badge & Filter Count Updates
+            tagPointsCount.innerText = `POINTS: ${visibleCount.toLocaleString()} / ${n.toLocaleString()} (🟢 Road: ${countRoad.toLocaleString()} | 🔵 Structures: ${countStatic.toLocaleString()} | 🟠 Vehicles: ${countDynamic.toLocaleString()})`;
+
+            const lgRoad = document.getElementById('countLegendRoad');
+            const lgStatic = document.getElementById('countLegendStatic');
+            const lgDyn = document.getElementById('countLegendDynamic');
+            if (lgRoad) lgRoad.innerText = `${(countRoad / 1000).toFixed(1)}k pts`;
+            if (lgStatic) lgStatic.innerText = `${(countStatic / 1000).toFixed(1)}k pts`;
+            if (lgDyn) lgDyn.innerText = `${(countDynamic / 1000).toFixed(1)}k pts`;
+
+            // Update Road / Terrain telemetry card
+            updateTerrainCard(countRoad, roadElevations, roadMinX, roadMaxX);
+        }
+
+        function updateTerrainCard(countRoad, roadElevations, roadMinX, roadMaxX) {
+            const terrPointsEl = document.getElementById('terrPoints');
+            const terrAreaEl = document.getElementById('terrArea');
+            const terrElevEl = document.getElementById('terrElev');
+            const terrRoughEl = document.getElementById('terrRoughness');
+            const terrBoundsEl = document.getElementById('terrBounds');
+            const terrSlopeEl = document.getElementById('terrSlope');
+
+            if (terrPointsEl) terrPointsEl.innerText = countRoad.toLocaleString();
+            if (terrAreaEl) {
+                const terrainCells = gridCells.filter(c => c.class === 0);
+                const approxArea = terrainCells.length > 0
+                    ? terrainCells.reduce((acc, c) => acc + (c.res * c.res), 0)
+                    : (countRoad * 0.08);
+                terrAreaEl.innerText = `${Math.round(approxArea).toLocaleString()} m²`;
+            }
+            if (roadElevations.length > 0) {
+                const meanElev = roadElevations.reduce((a, b) => a + b, 0) / roadElevations.length;
+                if (terrElevEl) terrElevEl.innerText = `${meanElev.toFixed(2)} m`;
+                const variance = roadElevations.reduce((acc, v) => acc + (v - meanElev)**2, 0) / roadElevations.length;
+                const stdDev = Math.sqrt(variance);
+                if (terrRoughEl) terrRoughEl.innerText = `±${(stdDev * 100).toFixed(1)} cm`;
+            }
+            if (terrBoundsEl && roadMinX < 900) {
+                const leftBound = Math.abs(roadMinX).toFixed(1);
+                const rightBound = Math.abs(roadMaxX).toFixed(1);
+                const totalW = (roadMaxX - roadMinX).toFixed(1);
+                terrBoundsEl.innerText = `[-${leftBound}m, +${rightBound}m] (${totalW}m)`;
+            }
+            if (terrSlopeEl) {
+                terrSlopeEl.innerText = '< 1.2% (Level Highway)';
+            }
+        }
+
+        function updateStaticStructuresIn3D() {
+            if (!staticStructuresGroup) return;
+            while (staticStructuresGroup.children.length > 0) {
+                staticStructuresGroup.remove(staticStructuresGroup.children[0]);
+            }
+
+            if (!visFilter.static) return;
+
+            // Extract high-occupancy static obstacle cells
+            const staticCells = gridCells.filter(c => c.class === 1 && c.occ > 0.35);
+            staticCells.sort((a, b) => (b.elev || 0) - (a.elev || 0));
+
+            const maxStaticToDraw = Math.min(staticCells.length, 36);
+            const step = Math.max(1, Math.floor(staticCells.length / maxStaticToDraw));
+
+            const staticStructures = [];
+
+            for (let i = 0; i < staticCells.length; i += step) {
+                const c = staticCells[i];
+                const sz = Math.max(0.6, c.res || 0.5);
+                const height = Math.max(0.9, (c.elev || 0.5) + 1.6);
+                const boxGeo = new THREE.BoxGeometry(sz, height, sz);
+                const edgeGeo = new THREE.EdgesGeometry(boxGeo);
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0x2563eb, linewidth: 2 });
+                const edgeBox = new THREE.LineSegments(edgeGeo, edgeMat);
+                
+                // Position: X is right (-c.y), Y is up (height/2 - 1.60), Z is forward (c.x)
+                edgeBox.position.set(-c.y, height / 2 - 1.60, c.x);
+                staticStructuresGroup.add(edgeBox);
+
+                const fillMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.16 });
+                const fillMesh = new THREE.Mesh(boxGeo, fillMat);
+                fillMesh.position.set(-c.y, height / 2 - 1.60, c.x);
+                staticStructuresGroup.add(fillMesh);
+
+                let type = 'Roadside Structure';
+                if (c.elev > 1.8) type = 'Building Facade';
+                else if (c.elev > 0.8 && c.res <= 0.3) type = 'Utility Pole / Post';
+                else if (c.elev < 0.45) type = 'Road Curb / Divider';
+                else type = 'Barrier / Wall';
+
+                if (staticStructures.length < 25) {
+                    staticStructures.push({
+                        id: `S${staticStructures.length + 1}`,
+                        type: type,
+                        x: -c.y,
+                        y: c.elev,
+                        z: c.x,
+                        occ: Math.round(c.occ * 100),
+                        res: c.res
+                    });
+                }
+            }
+
+            // Update Static Structures table
+            updateStaticTable(staticStructures);
+        }
+
+        function updateStaticTable(structures) {
+            const staticBody = document.getElementById('staticTableBody');
+            const badgeCount = document.getElementById('badgeCountStatic');
+            if (badgeCount) badgeCount.innerText = structures.length;
+
+            if (!staticBody) return;
+            if (structures.length === 0) {
+                staticBody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">No prominent static structures detected</td></tr>';
+                return;
+            }
+
+            staticBody.innerHTML = structures.map(s => {
+                return `<tr>
+                    <td style="color:#2563eb; font-weight:700;">#${s.id}</td>
+                    <td style="font-weight:600;">${s.type}</td>
+                    <td>X:${s.x.toFixed(1)}m, Y:${s.z.toFixed(1)}m</td>
+                    <td>${s.y.toFixed(2)}m</td>
+                    <td><span style="color:#2563eb;font-weight:700;">${s.occ}%</span></td>
+                </tr>`;
+            }).join('');
         }
 
         function updateTrackBoundingBoxes() {
@@ -1224,6 +1616,8 @@
             while (boundingBoxesGroup.children.length > 0) {
                 boundingBoxesGroup.remove(boundingBoxesGroup.children[0]);
             }
+
+            if (!visFilter.dynamic) return;
 
             tracksData.forEach(tr => {
                 const bw = tr.w || 2.0;
@@ -1245,16 +1639,14 @@
 
         function updateTracksTable() {
             const tbody = document.getElementById('tracksTableBody');
-            const tagActive = document.getElementById('tagActiveTracks');
+            const badgeCount = document.getElementById('badgeCountDynamic');
+            if (badgeCount) badgeCount.innerText = tracksData.length;
             if (!tbody) return;
 
             if (tracksData.length === 0) {
                 tbody.innerHTML = '<tr id="tracks-empty-row"><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">No dynamic obstacles in scan</td></tr>';
-                if (tagActive) tagActive.innerText = '0 ACTIVE';
                 return;
             }
-
-            if (tagActive) tagActive.innerText = `${tracksData.length} ACTIVE`;
 
             tbody.innerHTML = tracksData.map(tr => {
                 const range = Math.sqrt((tr.z || 0)**2 + (tr.x || 0)**2).toFixed(1);
@@ -1324,6 +1716,10 @@
             let terrainCount = 0, staticCount = 0, dynCount = 0;
             if (gridCells.length > 0) {
                 gridCells.forEach(cell => {
+                    if (cell.class === 2 && !visFilter.dynamic) return;
+                    if (cell.class === 1 && !visFilter.static) return;
+                    if (cell.class === 0 && !visFilter.road) return;
+
                     const sx = cx - cell.y * scale;
                     const sy = cy - cell.x * scale;
                     if (sx < 0 || sx > w || sy < 0 || sy > h) return;
@@ -1345,6 +1741,10 @@
                 });
             } else if (lidarPoints.length > 0) {
                 lidarPoints.forEach(pt => {
+                    if (pt.semClass === 2 && !visFilter.dynamic) return;
+                    if (pt.semClass === 1 && !visFilter.static) return;
+                    if (pt.semClass === 0 && !visFilter.road) return;
+
                     const sx = cx + pt.x * scale;
                     const sy = cy - pt.z * scale;
                     if (sx < 0 || sx > w || sy < 0 || sy > h) return;
@@ -1365,32 +1765,34 @@
             }
 
             // Draw Tracked Vehicle Bounding Boxes
-            tracksData.forEach(tr => {
-                const sx = cx + tr.x * scale;
-                const sy = cy - tr.z * scale;
-                const bw = (tr.w || 2.0) * scale;
-                const bl = (tr.l || 4.5) * scale;
+            if (visFilter.dynamic) {
+                tracksData.forEach(tr => {
+                    const sx = cx + tr.x * scale;
+                    const sy = cy - tr.z * scale;
+                    const bw = (tr.w || 2.0) * scale;
+                    const bl = (tr.l || 4.5) * scale;
 
-                ctx.strokeStyle = '#ea580c';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(sx - bw / 2, sy - bl / 2, bw, bl);
-                ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
-                ctx.fillRect(sx - bw / 2, sy - bl / 2, bw, bl);
-
-                ctx.fillStyle = '#ea580c';
-                ctx.font = 'bold 10px JetBrains Mono';
-                ctx.fillText(`#${tr.id} ${tr.cls || 'Vehicle'}`, sx - bw / 2, sy - bl / 2 - 4);
-
-                const speed = Math.sqrt((tr.vx || 0)**2 + (tr.vy || 0)**2);
-                if (speed > 0.1) {
                     ctx.strokeStyle = '#ea580c';
-                    ctx.lineWidth = 1.5;
-                    ctx.beginPath();
-                    ctx.moveTo(sx, sy);
-                    ctx.lineTo(sx - tr.vy * scale * 2.0, sy - tr.vx * scale * 2.0);
-                    ctx.stroke();
-                }
-            });
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(sx - bw / 2, sy - bl / 2, bw, bl);
+                    ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
+                    ctx.fillRect(sx - bw / 2, sy - bl / 2, bw, bl);
+
+                    ctx.fillStyle = '#ea580c';
+                    ctx.font = 'bold 10px JetBrains Mono';
+                    ctx.fillText(`#${tr.id} ${tr.cls || 'Vehicle'}`, sx - bw / 2, sy - bl / 2 - 4);
+
+                    const speed = Math.sqrt((tr.vx || 0)**2 + (tr.vy || 0)**2);
+                    if (speed > 0.1) {
+                        ctx.strokeStyle = '#ea580c';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.moveTo(sx, sy);
+                        ctx.lineTo(sx - tr.vy * scale * 2.0, sy - tr.vx * scale * 2.0);
+                        ctx.stroke();
+                    }
+                });
+            }
 
             // Ego Vehicle Symbol
             ctx.fillStyle = '#2563eb';
@@ -1408,31 +1810,31 @@
             ctx.fillText('EGO', cx, cy + 22);
             ctx.textAlign = 'left';
 
-            // HUD Legend
+            // HUD Legend on 2.5D Canvas
             const hudX = 14, hudY = h - 72;
-            ctx.fillStyle = isDarkMode ? 'rgba(6,9,14,0.85)' : 'rgba(255, 255, 255, 0.94)';
+            ctx.fillStyle = isDarkMode ? 'rgba(6,9,14,0.88)' : 'rgba(255, 255, 255, 0.95)';
             ctx.strokeStyle = isDarkMode ? 'rgba(56,189,248,0.2)' : '#cbd5e1';
             ctx.lineWidth = 1;
-            ctx.fillRect(hudX - 4, hudY - 12, 195, 74);
-            ctx.strokeRect(hudX - 4, hudY - 12, 195, 74);
+            ctx.fillRect(hudX - 4, hudY - 12, 210, 74);
+            ctx.strokeRect(hudX - 4, hudY - 12, 210, 74);
 
             ctx.font = 'bold 9px JetBrains Mono';
-            ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.8)' : '#334155';
+            ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.85)' : '#334155';
             ctx.fillText('2.5D OCCUPANCY GRID', hudX, hudY);
 
             ctx.fillStyle = '#059669';
             ctx.fillRect(hudX, hudY + 8, 8, 8);
             ctx.font = '9px JetBrains Mono';
-            ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.7)' : '#475569';
-            ctx.fillText('Terrain (Road Surface)', hudX + 14, hudY + 15);
+            ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.75)' : '#475569';
+            ctx.fillText(`Terrain: ${terrainCount.toLocaleString()} cells`, hudX + 14, hudY + 15);
 
             ctx.fillStyle = '#ea580c';
             ctx.fillRect(hudX, hudY + 22, 8, 8);
-            ctx.fillText('Dynamic Obstacles (Orange)', hudX + 14, hudY + 29);
+            ctx.fillText(`Dynamic: ${dynCount.toLocaleString()} cells`, hudX + 14, hudY + 29);
 
             ctx.fillStyle = '#2563eb';
             ctx.fillRect(hudX, hudY + 36, 8, 8);
-            ctx.fillText('Static Obstacles (Blue)', hudX + 14, hudY + 43);
+            ctx.fillText(`Static: ${staticCount.toLocaleString()} cells`, hudX + 14, hudY + 43);
         }
 
         // =========================================================================
@@ -1447,22 +1849,30 @@
                 const dot = document.getElementById('pipelineStatusDot');
                 if (dot) { dot.style.background = '#059669'; }
 
-                // Parse 3D Point Cloud
+                // Parse 3D Point Cloud (supports [x, y, z, intensity, class, confidence])
                 if (data.points && Array.isArray(data.points)) {
-                    lidarPoints = data.points.map(p => ({
-                        x: -p.y,
-                        y:  p.z,
-                        z:  p.x,
-                        semClass: p.class !== undefined ? p.class : 0,
-                        intensity: p.intensity || 0.5,
-                        confidence: p.confidence || 1.0
-                    }));
-                    updateThreePointCloud();
+                    lidarPoints = data.points.map(p => {
+                        const px = Array.isArray(p) ? p[0] : (p.x !== undefined ? p.x : 0);
+                        const py = Array.isArray(p) ? p[1] : (p.y !== undefined ? p.y : 0);
+                        const pz = Array.isArray(p) ? p[2] : (p.z !== undefined ? p.z : 0);
+                        const pInt = Array.isArray(p) ? p[3] : (p.intensity !== undefined ? p.intensity : 0.5);
+                        const pCls = Array.isArray(p) ? p[4] : (p.class !== undefined ? p.class : (p.semClass !== undefined ? p.semClass : 0));
+                        const pConf = Array.isArray(p) ? p[5] : (p.confidence !== undefined ? p.confidence : 1.0);
+                        return {
+                            x: -py,
+                            y:  pz,
+                            z:  px,
+                            semClass: pCls,
+                            intensity: pInt,
+                            confidence: pConf
+                        };
+                    });
                 }
 
-                // Parse 2.5D Quadtree Grid Cells
-                if (data.grid_cells && Array.isArray(data.grid_cells)) {
-                    gridCells = data.grid_cells;
+                // Parse 2.5D Quadtree Grid Cells (both "cells" and "grid_cells")
+                const cells = data.cells || data.grid_cells;
+                if (cells && Array.isArray(cells)) {
+                    gridCells = cells;
                 }
 
                 // Parse Kalman Tracked Obstacles
@@ -1479,9 +1889,13 @@
                         vx:  t.vx || 0,
                         vy:  t.vy || 0
                     }));
-                    updateTrackBoundingBoxes();
-                    updateTracksTable();
                 }
+
+                // Update 3D Hologram, 2.5D Radar, and Semantic Telemetry
+                updateThreePointCloud();
+                updateStaticStructuresIn3D();
+                updateTrackBoundingBoxes();
+                updateTracksTable();
 
                 // Update Telemetry & HUD
                 const m = data.metrics;

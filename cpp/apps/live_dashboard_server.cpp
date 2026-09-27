@@ -55,6 +55,14 @@ std::string readFileContents(const std::string& path) {
     return ss.str();
 }
 
+std::string sanitizeJsonPath(const std::string& p) {
+    std::string s = p;
+    for (char& c : s) {
+        if (c == '\\') c = '/';
+    }
+    return s;
+}
+
 } // namespace
 
 class LiveDashboardServer {
@@ -354,7 +362,7 @@ private:
         ss << "  \"ram_mb\": " << ram_mb << ",\n";
         ss << "  \"frame_index\": " << seq_index_ << ",\n";
         ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
-        ss << "  \"current_scan\": \"" << (seq_scans_.empty() ? "" : seq_scans_[seq_index_]) << "\",\n";
+        ss << "  \"current_scan\": \"" << (seq_scans_.empty() ? "" : sanitizeJsonPath(seq_scans_[seq_index_])) << "\",\n";
         ss << "  \"lidar_points\": " << active_pts << ",\n";
         ss << "  \"active_cells\": " << active_cells << ",\n";
         ss << "  \"active_tracks\": " << active_tracks << ",\n";
@@ -387,7 +395,7 @@ private:
         ss << "    \"input_points\": " << raw_scan_.size() << ",\n";
         ss << "    \"frame_index\": " << seq_index_ << ",\n";
         ss << "    \"frame_count\": " << seq_scans_.size() << ",\n";
-        ss << "    \"current_scan\": \"" << (seq_scans_.empty() ? "" : seq_scans_[seq_index_]) << "\",\n";
+        ss << "    \"current_scan\": \"" << (seq_scans_.empty() ? "" : sanitizeJsonPath(seq_scans_[seq_index_])) << "\",\n";
         ss << "    \"active_cells\": " << latest_metrics_.active_cells << ",\n";
         ss << "    \"active_tracks\": " << latest_metrics_.active_tracks << ",\n";
         ss << "    \"preprocess_time_ms\": " << latest_metrics_.preprocess_time_ms << ",\n";
@@ -473,7 +481,7 @@ private:
     // Load and process one sequence frame (grid/tracker state persists).
     bool processFrameAt(size_t index) {
         if (index >= seq_scans_.size()) return false;
-        if (!ps26053::LidarIO::loadBinScan(seq_scans_[index], raw_scan_)) {
+        if (!ps26053::LidarIO::loadPointCloud(seq_scans_[index], raw_scan_)) {
             std::cerr << "[Server] Failed to load scan: " << seq_scans_[index] << "\n";
             return false;
         }
@@ -534,11 +542,11 @@ private:
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"frame_index\": " << seq_index_ << ",\n";
         ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
-        ss << "  \"current_scan\": \"" << (seq_scans_.empty() ? "" : seq_scans_[seq_index_]) << "\",\n";
+        ss << "  \"current_scan\": \"" << (seq_scans_.empty() ? "" : sanitizeJsonPath(seq_scans_[seq_index_])) << "\",\n";
         ss << "  \"scans\": [\n";
         for (size_t i = 0; i < seq_scans_.size(); ++i) {
             if (i > 0) ss << ",\n";
-            ss << "    \"" << seq_scans_[i] << "\"";
+            ss << "    \"" << sanitizeJsonPath(seq_scans_[i]) << "\"";
         }
         ss << "\n  ],\n";
         ss << "  \"watch_enabled\": " << (watch_enabled_ ? "true" : "false") << ",\n";
@@ -576,7 +584,7 @@ private:
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"frame_index\": " << seq_index_ << ",\n";
         ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
-        ss << "  \"current_scan\": \"" << seq_scans_[seq_index_] << "\",\n";
+        ss << "  \"current_scan\": \"" << sanitizeJsonPath(seq_scans_[seq_index_]) << "\",\n";
         ss << "  \"metrics\": {\n";
         ss << "    \"active_cells\": " << latest_metrics_.active_cells << ",\n";
         ss << "    \"active_tracks\": " << latest_metrics_.active_tracks << ",\n";
@@ -598,7 +606,7 @@ private:
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"frame_index\": " << seq_index_ << ",\n";
         ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
-        ss << "  \"current_scan\": \"" << seq_scans_[seq_index_] << "\",\n";
+        ss << "  \"current_scan\": \"" << sanitizeJsonPath(seq_scans_[seq_index_]) << "\",\n";
         ss << "  \"metrics\": {\n";
         ss << "    \"active_cells\": " << latest_metrics_.active_cells << ",\n";
         ss << "    \"active_tracks\": " << latest_metrics_.active_tracks << ",\n";
@@ -644,7 +652,7 @@ private:
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"frame_index\": " << seq_index_ << ",\n";
         ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
-        ss << "  \"current_scan\": \"" << seq_scans_[seq_index_] << "\",\n";
+        ss << "  \"current_scan\": \"" << sanitizeJsonPath(seq_scans_[seq_index_]) << "\",\n";
         ss << "  \"metrics\": {\n";
         ss << "    \"active_cells\": " << latest_metrics_.active_cells << ",\n";
         ss << "    \"active_tracks\": " << latest_metrics_.active_tracks << ",\n";
@@ -846,10 +854,15 @@ private:
 };
 
 int main(int argc, char** argv) {
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 
     int port = 8080;
-    std::string scan_arg = "data/raw";
+    std::string scan_arg = "data/raw/sequences/00/velodyne";
+    if (!std::filesystem::exists(scan_arg)) {
+        scan_arg = "data/raw";
+    }
     bool watch = false;
     int watch_interval = 5;
     bool loop = false;
