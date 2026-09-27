@@ -272,6 +272,8 @@ private:
             serveApiFramePrev(sock);
         } else if (method == "POST" && pure_path == "/api/frame/select") {
             serveApiFrameSelect(sock, query_str, request);
+        } else if (method == "POST" && pure_path == "/api/lidar/upload") {
+            serveApiLidarUpload(sock, request, header_end, query_str);
         } else if (method == "POST" && pure_path == "/api/reset") {
             serveApiReset(sock);
         } else if (method == "GET" && (pure_path == "/api/ply" || pure_path == "/api/ply/export")) {
@@ -643,6 +645,127 @@ private:
         ss << "  \"frame_index\": " << seq_index_ << ",\n";
         ss << "  \"frame_count\": " << seq_scans_.size() << ",\n";
         ss << "  \"current_scan\": \"" << seq_scans_[seq_index_] << "\",\n";
+        ss << "  \"metrics\": {\n";
+        ss << "    \"active_cells\": " << latest_metrics_.active_cells << ",\n";
+        ss << "    \"active_tracks\": " << latest_metrics_.active_tracks << ",\n";
+        ss << "    \"total_time_ms\": " << latest_metrics_.total_time_ms << "\n";
+        ss << "  }\n";
+        ss << "}";
+        sendResponse(sock, 200, "application/json", ss.str());
+    }
+
+    // ── LiDAR Scan Upload ──────────────────────────────────────────────────
+    // POST /api/lidar/upload
+    // Body: raw bytes of a single Velodyne .bin scan (4×float32 per point).
+    // Optional query: ?filename=<name.bin>  (used for display only)
+    //
+    // The uploaded scan is:
+    //   1. Saved to uploads/<timestamp>_<filename>.bin
+    //   2. Appended to the live sequence (seq_scans_)
+    //   3. Processed immediately as the next frame
+    //   4. Returned as a normal /api/lidar/scan JSON response
+    void serveApiLidarUpload(SOCKET sock, const std::string& request,
+                             size_t header_end, const std::string& query_str) {
+        // Extract filename hint from query string
+        std::string filename_hint = "uploaded.bin";
+        auto parse_param = [&](const std::string& key) -> std::string {
+            std::string prefix = key + "=";
+            size_t p = query_str.find(prefix);
+            if (p == std::string::npos) return "";
+            p += prefix.size();
+            size_t e = query_str.find('&', p);
+            return (e == std::string::npos) ? query_str.substr(p) : query_str.substr(p, e - p);
+        };
+        std::string fn = parse_param("filename");
+        if (!fn.empty()) filename_hint = fn;
+
+        // Validate extension — only .bin, .pcd, and .ply allowed
+        auto ext_ok = [](const std::string& s) {
+            std::string lower = s;
+            for (char& c : lower) c = static_cast<char>(std::tolower(c));
+            if (lower.size() >= 4 && lower.substr(lower.size()-4) == ".bin") return true;
+            if (lower.size() >= 4 && lower.substr(lower.size()-4) == ".pcd") return true;
+            if (lower.size() >= 4 && lower.substr(lower.size()-4) == ".ply") return true;
+            return false;
+        };
+        if (!ext_ok(filename_hint)) {
+            sendResponse(sock, 400, "application/json",
+                "{\"error\":\"Only LiDAR point cloud files (.bin, .pcd, .ply) are accepted. "
+                "Camera images, RGB video, and non-LiDAR formats are strictly rejected.\"}");
+            return;
+        }
+
+        // Extract body bytes (raw scan data)
+        size_t body_start = header_end + 4;
+        std::string body = (body_start < request.size()) ? request.substr(body_start) : "";
+
+        if (body.empty()) {
+            sendResponse(sock, 400, "application/json",
+                "{\"error\":\"Empty request body — send raw LiDAR point cloud bytes.\"}" );
+            return;
+        }
+
+        // Minimum size check: must have at least 1 point
+        if (body.size() < 16) {
+            sendResponse(sock, 400, "application/json",
+                "{\"error\":\"File too small — must be a valid LiDAR point cloud (>=16 bytes).\"}" );
+            return;
+        }
+
+        // Save to uploads/ with timestamp prefix
+        std::filesystem::create_directories("uploads");
+        auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        std::string save_path = "uploads/" + std::to_string(now_ms) + "_" + filename_hint;
+        {
+            std::ofstream out(save_path, std::ios::binary);
+            if (!out.is_open()) {
+                sendResponse(sock, 500, "application/json",
+                    "{\"error\":\"Failed to save uploaded file to disk.\"}" );
+                return;
+            }
+            out.write(body.data(), static_cast<std::streamsize>(body.size()));
+        }
+
+        std::lock_guard<std::mutex> lock(mtx_);
+
+        // Process the uploaded scan immediately through the pipeline
+        ps26053::PointCloud raw_scan;
+        if (!ps26053::LidarIO::loadPointCloud(save_path, raw_scan) || raw_scan.empty()) {
+            sendResponse(sock, 422, "application/json",
+                "{\"error\":\"File saved but could not be parsed as a valid LiDAR point cloud (.bin, .pcd, .ply).\"}" );
+            return;
+        }
+
+        // Append to the live sequence
+        seq_scans_.push_back(save_path);
+        size_t new_frame_idx = seq_scans_.size() - 1;
+        seq_index_ = new_frame_idx;
+        raw_scan_ = raw_scan;
+
+        // Run full pipeline
+        double ts = new_frame_idx * 0.1;
+        latest_metrics_ = pipeline_->processFrame(raw_scan_, ts, static_cast<int>(new_frame_idx));
+        scan_processed_ = true;
+
+        // Export PLY for this frame
+        char fname_buf[64];
+        std::snprintf(fname_buf, sizeof(fname_buf),
+            "results/maps/adaptive_map_frame%06zu.ply", new_frame_idx);
+        std::filesystem::create_directories("results/maps");
+        pipeline_->getGrid().exportToPLY(fname_buf);
+
+        // Return scan JSON (same format as /api/lidar/scan)
+        std::ostringstream ss;
+        ss << "{\n";
+        ss << "  \"status\": \"ok\",\n";
+        ss << "  \"upload\": {\n";
+        ss << "    \"filename\": \"" << filename_hint << "\",\n";
+        ss << "    \"bytes\": " << body.size() << ",\n";
+        ss << "    \"points_loaded\": " << raw_scan.size() << ",\n";
+        ss << "    \"frame_index\": " << new_frame_idx << ",\n";
+        ss << "    \"total_frames\": " << seq_scans_.size() << "\n";
+        ss << "  },\n";
         ss << "  \"metrics\": {\n";
         ss << "    \"active_cells\": " << latest_metrics_.active_cells << ",\n";
         ss << "    \"active_tracks\": " << latest_metrics_.active_tracks << ",\n";

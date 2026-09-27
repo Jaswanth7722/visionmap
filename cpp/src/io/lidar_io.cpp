@@ -186,4 +186,267 @@ bool LidarIO::writePLY(const std::string& filepath, const PointCloud& cloud) {
     return true;
 }
 
+bool LidarIO::loadPCD(const std::string& filepath, PointCloud& out_cloud) {
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "[LidarIO] Failed to open PCD: " << filepath << std::endl;
+        return false;
+    }
+
+    std::string line;
+    std::vector<std::string> fields;
+    std::vector<int> sizes;
+    std::vector<char> types;
+    int num_points = 0;
+    bool is_binary = false;
+    int idx_x = -1, idx_y = -1, idx_z = -1, idx_i = -1;
+
+    while (std::getline(file, line)) {
+        // Strip trailing \r
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+
+        std::istringstream iss(line);
+        std::string tag;
+        iss >> tag;
+        if (tag == "FIELDS") {
+            std::string f;
+            int idx = 0;
+            while (iss >> f) {
+                fields.push_back(f);
+                if (f == "x") idx_x = idx;
+                else if (f == "y") idx_y = idx;
+                else if (f == "z") idx_z = idx;
+                else if (f == "intensity" || f == "i") idx_i = idx;
+                idx++;
+            }
+        } else if (tag == "SIZE") {
+            int s;
+            while (iss >> s) sizes.push_back(s);
+        } else if (tag == "TYPE") {
+            char t;
+            while (iss >> t) types.push_back(t);
+        } else if (tag == "POINTS") {
+            iss >> num_points;
+        } else if (tag == "DATA") {
+            std::string data_mode;
+            iss >> data_mode;
+            if (data_mode == "binary") is_binary = true;
+            break; // Header ends at DATA line
+        }
+    }
+
+    if (idx_x < 0 || idx_y < 0 || idx_z < 0) {
+        // Fallback default: first 3 columns are x, y, z
+        idx_x = 0; idx_y = 1; idx_z = 2;
+        if (fields.size() >= 4) idx_i = 3;
+    }
+
+    out_cloud.clear();
+    if (num_points > 0) out_cloud.reserve(num_points);
+
+    if (!is_binary) {
+        while (std::getline(file, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.empty()) continue;
+            std::istringstream iss(line);
+            std::vector<std::string> tokens;
+            std::string token;
+            while (iss >> token) tokens.push_back(token);
+
+            if (tokens.size() <= static_cast<size_t>(std::max({idx_x, idx_y, idx_z}))) continue;
+
+            Point3D pt;
+            try {
+                pt.x = std::stof(tokens[idx_x]);
+                pt.y = std::stof(tokens[idx_y]);
+                pt.z = std::stof(tokens[idx_z]);
+                pt.intensity = (idx_i >= 0 && static_cast<size_t>(idx_i) < tokens.size()) ?
+                               std::stof(tokens[idx_i]) : 0.5f;
+            } catch (...) {
+                continue;
+            }
+            pt.semantic_class = SemanticClass::UNKNOWN;
+            pt.confidence = 0.0f;
+            out_cloud.push_back(pt);
+        }
+    } else {
+        // Compute total point record stride in bytes
+        int point_stride = 0;
+        if (!sizes.empty() && sizes.size() == fields.size()) {
+            for (int s : sizes) point_stride += s;
+        } else {
+            point_stride = static_cast<int>(fields.size() * sizeof(float));
+        }
+        if (point_stride < 12) point_stride = 16; // default 4x float
+
+        std::vector<char> pt_buf(point_stride);
+        while (file.read(pt_buf.data(), point_stride)) {
+            Point3D pt;
+            const float* fptr = reinterpret_cast<const float*>(pt_buf.data());
+            pt.x = fptr[idx_x];
+            pt.y = fptr[idx_y];
+            pt.z = fptr[idx_z];
+            pt.intensity = (idx_i >= 0) ? fptr[idx_i] : 0.5f;
+            pt.semantic_class = SemanticClass::UNKNOWN;
+            pt.confidence = 0.0f;
+            out_cloud.push_back(pt);
+        }
+    }
+
+    return !out_cloud.empty();
+}
+
+bool LidarIO::loadPLY(const std::string& filepath, PointCloud& out_cloud) {
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "[LidarIO] Failed to open PLY: " << filepath << std::endl;
+        return false;
+    }
+
+    std::string line;
+    std::getline(file, line);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line != "ply") {
+        return false;
+    }
+
+    bool is_ascii = true;
+    size_t num_vertices = 0;
+    std::vector<std::string> prop_names;
+    int idx_x = -1, idx_y = -1, idx_z = -1, idx_class = -1, idx_r = -1, idx_g = -1, idx_b = -1;
+
+    while (std::getline(file, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        std::istringstream iss(line);
+        std::string tag;
+        iss >> tag;
+        if (tag == "format") {
+            std::string fmt;
+            iss >> fmt;
+            if (fmt != "ascii") is_ascii = false;
+        } else if (tag == "element") {
+            std::string elem_type;
+            size_t count = 0;
+            iss >> elem_type >> count;
+            if (elem_type == "vertex") num_vertices = count;
+        } else if (tag == "property") {
+            std::string prop_type, prop_name;
+            iss >> prop_type >> prop_name;
+            int cur_idx = static_cast<int>(prop_names.size());
+            prop_names.push_back(prop_name);
+            if (prop_name == "x") idx_x = cur_idx;
+            else if (prop_name == "y") idx_y = cur_idx;
+            else if (prop_name == "z") idx_z = cur_idx;
+            else if (prop_name == "class_id" || prop_name == "label") idx_class = cur_idx;
+            else if (prop_name == "red" || prop_name == "r") idx_r = cur_idx;
+            else if (prop_name == "green" || prop_name == "g") idx_g = cur_idx;
+            else if (prop_name == "blue" || prop_name == "b") idx_b = cur_idx;
+        } else if (tag == "end_header") {
+            break;
+        }
+    }
+
+    if (idx_x < 0 || idx_y < 0 || idx_z < 0) {
+        idx_x = 0; idx_y = 1; idx_z = 2;
+    }
+
+    out_cloud.clear();
+    if (num_vertices > 0) out_cloud.reserve(num_vertices);
+
+    if (is_ascii) {
+        while (std::getline(file, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.empty()) continue;
+            std::istringstream iss(line);
+            std::vector<std::string> tokens;
+            std::string token;
+            while (iss >> token) tokens.push_back(token);
+
+            if (tokens.size() <= static_cast<size_t>(std::max({idx_x, idx_y, idx_z}))) continue;
+
+            Point3D pt;
+            try {
+                pt.x = std::stof(tokens[idx_x]);
+                pt.y = std::stof(tokens[idx_y]);
+                pt.z = std::stof(tokens[idx_z]);
+                pt.intensity = 0.5f;
+
+                if (idx_class >= 0 && static_cast<size_t>(idx_class) < tokens.size()) {
+                    int c = std::stoi(tokens[idx_class]);
+                    if (c == 0) pt.semantic_class = SemanticClass::TERRAIN;
+                    else if (c == 1) pt.semantic_class = SemanticClass::STATIC_OBSTACLE;
+                    else if (c == 2) pt.semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
+                    else pt.semantic_class = SemanticClass::UNKNOWN;
+                    pt.confidence = 1.0f;
+                } else if (idx_r >= 0 && idx_g >= 0 && idx_b >= 0 &&
+                           static_cast<size_t>(std::max({idx_r, idx_g, idx_b})) < tokens.size()) {
+                    int r = std::stoi(tokens[idx_r]);
+                    int g = std::stoi(tokens[idx_g]);
+                    int b = std::stoi(tokens[idx_b]);
+                    if (r > 200 && g > 200 && b < 100) { // yellow
+                        pt.semantic_class = SemanticClass::DYNAMIC_OBSTACLE;
+                        pt.confidence = 1.0f;
+                    } else if (r < 50 && g > 200 && b > 200) { // cyan
+                        pt.semantic_class = SemanticClass::STATIC_OBSTACLE;
+                        pt.confidence = 1.0f;
+                    } else if (g > 150 && r < 50) { // green
+                        pt.semantic_class = SemanticClass::TERRAIN;
+                        pt.confidence = 1.0f;
+                    } else {
+                        pt.semantic_class = SemanticClass::UNKNOWN;
+                        pt.confidence = 0.0f;
+                    }
+                } else {
+                    pt.semantic_class = SemanticClass::UNKNOWN;
+                    pt.confidence = 0.0f;
+                }
+            } catch (...) {
+                continue;
+            }
+            out_cloud.push_back(pt);
+        }
+    } else {
+        // Binary little endian PLY (basic float coordinates)
+        size_t stride = prop_names.size() * sizeof(float);
+        if (stride < 12) stride = 12;
+        std::vector<char> buf(stride);
+        while (file.read(buf.data(), stride)) {
+            const float* fptr = reinterpret_cast<const float*>(buf.data());
+            Point3D pt;
+            pt.x = fptr[idx_x];
+            pt.y = fptr[idx_y];
+            pt.z = fptr[idx_z];
+            pt.intensity = 0.5f;
+            pt.semantic_class = SemanticClass::UNKNOWN;
+            pt.confidence = 0.0f;
+            out_cloud.push_back(pt);
+        }
+    }
+
+    return !out_cloud.empty();
+}
+
+bool LidarIO::loadPointCloud(const std::string& filepath, PointCloud& out_cloud) {
+    std::string lower = filepath;
+    for (char& c : lower) c = static_cast<char>(std::tolower(c));
+
+    if (lower.size() >= 4 && lower.substr(lower.size() - 4) == ".bin") {
+        return loadBinScan(filepath, out_cloud);
+    }
+    if (lower.size() >= 4 && lower.substr(lower.size() - 4) == ".pcd") {
+        return loadPCD(filepath, out_cloud);
+    }
+    if (lower.size() >= 4 && lower.substr(lower.size() - 4) == ".ply") {
+        return loadPLY(filepath, out_cloud);
+    }
+
+    // Try in order: BIN -> PCD -> PLY
+    if (loadBinScan(filepath, out_cloud) && !out_cloud.empty()) return true;
+    if (loadPCD(filepath, out_cloud) && !out_cloud.empty()) return true;
+    if (loadPLY(filepath, out_cloud) && !out_cloud.empty()) return true;
+
+    return false;
+}
+
 } // namespace ps26053

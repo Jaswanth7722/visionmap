@@ -7,26 +7,83 @@
     <!-- Modern Typography: Inter & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Three.js (Served locally from /vendor/three.min.js, fallback to unpkg) -->
+    <!-- Three.js (Served locally from /vendor/three.min.js, fallback to CDN) -->
     <script src="/vendor/three.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.160.0/build/three.min.js'"></script>
 
     <style>
         :root {
+            /* Clean White Theme (Default) */
+            --bg-base: #f8fafc;
+            --bg-canvas: #f1f5f9;
+            --bg-panel: rgba(255, 255, 255, 0.94);
+            --bg-panel-hover: #ffffff;
+            --bg-card: #ffffff;
+            --bg-inset: #f8fafc;
+            --border-dim: #e2e8f0;
+            --border-bright: #3b82f6;
+            --border-subtle: #edf2f7;
+            
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --primary-light: #eff6ff;
+            --primary-glow: rgba(37, 99, 235, 0.15);
+            
+            --cyan: #0284c7;
+            --emerald: #059669;
+            --emerald-light: #ecfdf5;
+            --amber: #ea580c;
+            --amber-light: #fff7ed;
+            --rose: #e11d48;
+            --rose-light: #fff1f2;
+            
+            --text-main: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+            --shadow-panel: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+            --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+            
+            --three-bg: 0xf1f5f9;
+            --grid-line: 0xdbeafe;
+            --grid-axis: 0x2563eb;
+        }
+
+        body.dark-theme {
             --bg-base: #06090e;
-            --bg-panel: rgba(10, 16, 26, 0.85);
+            --bg-canvas: #020408;
+            --bg-panel: rgba(10, 16, 26, 0.88);
             --bg-panel-hover: rgba(14, 22, 36, 0.95);
+            --bg-card: rgba(8, 12, 22, 0.95);
+            --bg-inset: #030508;
             --border-dim: rgba(56, 189, 248, 0.15);
             --border-bright: rgba(56, 189, 248, 0.45);
+            --border-subtle: rgba(255, 255, 255, 0.05);
+            
+            --primary: #00f3ff;
+            --primary-hover: #38bdf8;
+            --primary-light: rgba(0, 243, 255, 0.12);
+            --primary-glow: rgba(0, 243, 255, 0.35);
+            
             --cyan: #00f3ff;
-            --cyan-glow: rgba(0, 243, 255, 0.35);
             --emerald: #10b981;
+            --emerald-light: rgba(16, 185, 129, 0.15);
             --amber: #ffff00;
+            --amber-light: rgba(255, 255, 0, 0.15);
             --rose: #f43f5e;
+            --rose-light: rgba(244, 63, 94, 0.15);
+            
             --text-main: #f8fafc;
             --text-secondary: #94a3b8;
             --text-muted: #64748b;
+            
+            --shadow-panel: 0 4px 20px rgba(0, 0, 0, 0.5);
+            --three-bg: 0x020408;
+            --grid-line: 0x1e293b;
+            --grid-axis: 0x00f3ff;
         }
 
         * {
@@ -44,42 +101,44 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            transition: background-color 0.25s ease, color 0.25s ease;
         }
 
         /* Top Navigation Header */
         header {
-            height: 52px;
-            background: rgba(6, 9, 14, 0.95);
-            backdrop-filter: blur(12px);
+            height: 54px;
+            background: var(--bg-panel);
+            backdrop-filter: blur(16px);
             border-bottom: 1px solid var(--border-dim);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 16px;
+            padding: 0 18px;
             z-index: 50;
             flex-shrink: 0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
         }
 
         .header-brand {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
         .badge-core {
-            background: linear-gradient(135deg, #0284c7, #0369a1);
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
             color: #ffffff;
             font-size: 10px;
             font-weight: 700;
-            padding: 3px 7px;
-            border-radius: 4px;
+            padding: 3px 8px;
+            border-radius: 6px;
             letter-spacing: 0.5px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
         }
 
         .title-text {
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 13.5px;
+            font-weight: 700;
             color: var(--text-main);
             letter-spacing: -0.2px;
         }
@@ -87,13 +146,13 @@
         .subtitle-text {
             font-size: 11px;
             color: var(--text-muted);
-            margin-left: 4px;
+            margin-left: 2px;
         }
 
         .hud-stats-group {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 18px;
         }
 
         .hud-metric {
@@ -106,49 +165,71 @@
             font-size: 9px;
             text-transform: uppercase;
             color: var(--text-muted);
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 0.5px;
         }
 
         .hud-value {
-            font-size: 12px;
+            font-size: 12.5px;
             font-family: 'JetBrains Mono', monospace;
-            font-weight: 600;
-            color: var(--cyan);
+            font-weight: 700;
+            color: var(--primary);
         }
 
         .hud-value.green { color: var(--emerald); }
         .hud-value.amber { color: var(--amber); }
+
+        .theme-toggle-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .theme-toggle-btn:hover {
+            color: var(--text-main);
+            border-color: var(--border-bright);
+        }
 
         /* Main Grid Workspace */
         main {
             flex: 1;
             display: grid;
             grid-template-columns: 310px 1fr 340px;
-            gap: 8px;
-            padding: 8px;
-            height: calc(100vh - 52px);
+            gap: 10px;
+            padding: 10px;
+            height: calc(100vh - 54px);
             overflow: hidden;
         }
 
         .glass-panel {
             background: var(--bg-panel);
-            backdrop-filter: blur(16px);
+            backdrop-filter: blur(20px);
             border: 1px solid var(--border-dim);
-            border-radius: 8px;
+            border-radius: 12px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            box-shadow: var(--shadow-panel);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
         .panel-header {
-            padding: 10px 14px;
+            padding: 11px 15px;
             border-bottom: 1px solid var(--border-dim);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(255, 255, 255, 0.02);
+            background: var(--bg-inset);
             flex-shrink: 0;
         }
 
@@ -157,18 +238,18 @@
             font-weight: 700;
             letter-spacing: 0.5px;
             text-transform: uppercase;
-            color: var(--text-secondary);
+            color: var(--text-main);
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
         }
 
         .panel-title .dot {
-            width: 6px;
-            height: 6px;
-            background: var(--cyan);
+            width: 7px;
+            height: 7px;
+            background: var(--primary);
             border-radius: 50%;
-            box-shadow: 0 0 6px var(--cyan-glow);
+            box-shadow: 0 0 6px var(--primary-glow);
         }
 
         .panel-body {
@@ -182,13 +263,14 @@
 
         /* Sequence Controller Controls */
         .seq-box {
-            background: rgba(8, 12, 22, 0.95);
+            background: var(--bg-card);
             border: 1px solid var(--border-dim);
-            border-radius: 8px;
-            padding: 10px;
+            border-radius: 10px;
+            padding: 11px;
             display: flex;
             flex-direction: column;
             gap: 8px;
+            box-shadow: var(--shadow-card);
         }
 
         .seq-meta-row {
@@ -201,9 +283,10 @@
 
         .seq-scrubber {
             width: 100%;
-            accent-color: var(--cyan);
+            accent-color: var(--primary);
             cursor: pointer;
             height: 6px;
+            border-radius: 3px;
         }
 
         .seq-btn-group {
@@ -213,12 +296,12 @@
         }
 
         .btn {
-            background: rgba(255, 255, 255, 0.05);
+            background: var(--bg-card);
             border: 1px solid var(--border-dim);
             color: var(--text-main);
             padding: 6px 8px;
-            border-radius: 4px;
-            font-size: 10px;
+            border-radius: 6px;
+            font-size: 10.5px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.15s ease;
@@ -227,24 +310,29 @@
             justify-content: center;
             gap: 4px;
             font-family: 'Inter', sans-serif;
+            box-shadow: var(--shadow-sm);
         }
 
         .btn:hover {
-            background: rgba(0, 243, 255, 0.12);
-            border-color: var(--cyan);
-            color: #ffffff;
-            box-shadow: 0 0 8px var(--cyan-glow);
+            background: var(--bg-inset);
+            border-color: #cbd5e1;
+            color: var(--text-main);
         }
 
         .btn.primary {
-            background: rgba(0, 243, 255, 0.18);
-            border-color: var(--cyan);
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            border-color: #1d4ed8;
             color: #ffffff;
-            box-shadow: 0 0 10px var(--cyan-glow);
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+        }
+
+        .btn.primary:hover {
+            background: linear-gradient(135deg, #1d4ed8, #1e40af);
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.35);
         }
 
         .btn.active {
-            background: rgba(16, 185, 129, 0.2);
+            background: var(--emerald-light);
             border-color: var(--emerald);
             color: var(--emerald);
         }
@@ -254,7 +342,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 10px;
+            font-size: 10.5px;
         }
 
         .metric-key {
@@ -276,15 +364,16 @@
         }
 
         .tab-bar {
-            height: 36px;
+            height: 38px;
             background: var(--bg-panel);
             backdrop-filter: blur(12px);
             border: 1px solid var(--border-dim);
-            border-radius: 8px;
+            border-radius: 10px;
             display: flex;
             padding: 3px;
-            gap: 4px;
+            gap: 6px;
             flex-shrink: 0;
+            box-shadow: var(--shadow-sm);
         }
 
         .tab-btn {
@@ -294,7 +383,7 @@
             color: var(--text-secondary);
             font-size: 11px;
             font-weight: 600;
-            border-radius: 6px;
+            border-radius: 7px;
             cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
@@ -305,19 +394,21 @@
         }
 
         .tab-btn.active {
-            background: rgba(0, 243, 255, 0.12);
-            color: #ffffff;
-            border-color: var(--cyan);
-            box-shadow: 0 0 12px var(--cyan-glow);
+            background: var(--primary-light);
+            color: var(--primary);
+            border-color: rgba(37, 99, 235, 0.3);
+            font-weight: 700;
+            box-shadow: 0 1px 3px rgba(37, 99, 235, 0.1);
         }
 
         .viewport-wrapper {
             flex: 1;
-            background: #020408;
+            background: var(--bg-canvas);
             border: 1px solid var(--border-dim);
-            border-radius: 8px;
+            border-radius: 12px;
             position: relative;
             overflow: hidden;
+            box-shadow: var(--shadow-panel);
         }
 
         #threeContainer, #gridContainer {
@@ -356,32 +447,35 @@
         }
 
         .canvas-tag {
-            background: rgba(6, 9, 14, 0.85);
-            backdrop-filter: blur(8px);
+            background: var(--bg-panel);
+            backdrop-filter: blur(12px);
             border: 1px solid var(--border-dim);
-            color: var(--cyan);
+            color: var(--text-main);
             font-size: 10px;
             font-family: 'JetBrains Mono', monospace;
-            padding: 3px 8px;
-            border-radius: 4px;
+            padding: 4px 9px;
+            border-radius: 6px;
+            font-weight: 600;
             letter-spacing: 0.3px;
+            box-shadow: var(--shadow-sm);
         }
 
         .color-mode-select {
             pointer-events: auto;
-            background: rgba(6, 9, 14, 0.85);
+            background: var(--bg-panel);
             border: 1px solid var(--border-dim);
             border-radius: 6px;
             padding: 2px;
             display: flex;
             gap: 2px;
+            box-shadow: var(--shadow-sm);
         }
 
         .color-opt-btn {
             background: transparent;
             border: 1px solid transparent;
             color: var(--text-secondary);
-            font-size: 9px;
+            font-size: 9.5px;
             font-weight: 600;
             padding: 3px 8px;
             border-radius: 4px;
@@ -390,42 +484,123 @@
         }
 
         .color-opt-btn.active {
-            background: rgba(0, 243, 255, 0.2);
+            background: var(--primary);
             color: #ffffff;
-            border-color: var(--cyan);
         }
 
         .hud-legend {
             position: absolute;
             bottom: 12px;
             left: 12px;
-            background: rgba(6, 9, 14, 0.85);
-            backdrop-filter: blur(8px);
+            background: var(--bg-panel);
+            backdrop-filter: blur(12px);
             border: 1px solid var(--border-dim);
-            border-radius: 6px;
-            padding: 8px 10px;
+            border-radius: 8px;
+            padding: 9px 12px;
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 6px;
             z-index: 10;
-            font-size: 9px;
+            font-size: 9.5px;
             font-family: 'JetBrains Mono', monospace;
+            box-shadow: var(--shadow-md);
         }
 
         .legend-item {
             display: flex;
             align-items: center;
-            gap: 6px;
-            color: var(--text-secondary);
+            gap: 8px;
+            color: var(--text-main);
+            font-weight: 500;
         }
 
         .legend-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 2px;
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
         }
 
-        /* Right Panel: Tracks & Console */
+        /* ── LiDAR Scan Upload Panel (Strictly LiDAR-Only) ─────────────────── */
+        .upload-zone {
+            border: 2px dashed #93c5fd;
+            border-radius: 10px;
+            padding: 14px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.25s, background 0.25s, box-shadow 0.25s;
+            background: var(--primary-light);
+            position: relative;
+        }
+        .upload-zone:hover, .upload-zone.drag-over {
+            border-color: var(--primary);
+            background: #dbeafe;
+            box-shadow: 0 0 16px rgba(37, 99, 235, 0.15);
+        }
+        .upload-zone input[type=file] {
+            position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+        }
+        .upload-icon {
+            font-size: 24px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .upload-label {
+            font-size: 11px;
+            color: var(--text-main);
+            line-height: 1.4;
+        }
+        .upload-label strong { color: var(--primary); font-weight: 700; }
+        .upload-hint {
+            font-size: 9px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .format-badges {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            margin-top: 6px;
+        }
+        .format-badge {
+            background: var(--bg-card);
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+            font-size: 8.5px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .upload-queue {
+            margin-top: 8px;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        .upload-queue::-webkit-scrollbar { width: 4px; }
+        .upload-queue::-webkit-scrollbar-track { background: transparent; }
+        .upload-queue::-webkit-scrollbar-thumb { background: var(--border-dim); border-radius: 2px; }
+        .upload-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 7px;
+            border-radius: 6px;
+            font-size: 9.5px;
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            margin-bottom: 4px;
+            color: var(--text-main);
+        }
+        .upload-item.uploading { border-color: #3b82f6; background: #eff6ff; }
+        .upload-item.done { border-color: #10b981; background: #ecfdf5; color: #047857; }
+        .upload-item.error { border-color: #f43f5e; background: #fff1f2; color: #be123c; }
+        .upload-status-icon { flex-shrink: 0; }
+        .upload-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .upload-item-pts { font-weight: 700; color: var(--primary); }
+
+        /* Obstacle Tracking Table */
         .tracks-table {
             width: 100%;
             border-collapse: collapse;
@@ -440,19 +615,25 @@
             border-bottom: 1px solid var(--border-dim);
             font-size: 9px;
             text-transform: uppercase;
+            font-weight: 700;
+            background: var(--bg-inset);
         }
 
         .tracks-table td {
             padding: 5px 4px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-main);
+        }
+
+        .tracks-table tr:hover td {
+            background: var(--bg-inset);
         }
 
         .terminal-box {
-            background: #030508;
+            background: var(--bg-inset);
             border: 1px solid var(--border-dim);
-            border-radius: 6px;
-            padding: 8px;
+            border-radius: 8px;
+            padding: 9px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
             height: 140px;
@@ -463,9 +644,9 @@
         }
 
         .term-log { color: var(--text-secondary); }
-        .term-log.ok { color: var(--emerald); }
-        .term-log.warn { color: var(--amber); }
-        .term-log.info { color: var(--cyan); }
+        .term-log.ok { color: var(--emerald); font-weight: 600; }
+        .term-log.warn { color: var(--amber); font-weight: 600; }
+        .term-log.info { color: var(--primary); font-weight: 600; }
     </style>
 </head>
 <body>
@@ -475,7 +656,7 @@
         <div class="header-brand">
             <span class="badge-core">NATIVE C++20</span>
             <span class="title-text">PS 26053: Adaptive Variable-Resolution 2.5D LiDAR Mapping</span>
-            <span class="subtitle-text">| SemanticKITTI Multi-Frame LiDAR Pipeline</span>
+            <span class="subtitle-text">| Pure LiDAR Point Cloud Multi-Frame Pipeline</span>
         </div>
 
         <div class="hud-stats-group">
@@ -499,6 +680,10 @@
                 <span class="hud-label">Boundary QA</span>
                 <span class="hud-value green" id="hudGaps">0 errors</span>
             </div>
+            <button class="theme-toggle-btn" id="btnThemeToggle" title="Toggle Clean White / Dark Theme">
+                <span id="themeIcon">☀️</span>
+                <span id="themeLabel">Light</span>
+            </button>
         </div>
     </header>
 
@@ -516,7 +701,7 @@
                 <div class="seq-box">
                     <div class="seq-meta-row">
                         <span style="color:var(--text-muted);">Current Scan:</span>
-                        <span style="color:var(--cyan); font-weight:700;" id="txtCurrentScan">000000.bin</span>
+                        <span style="color:var(--primary); font-weight:700;" id="txtCurrentScan">000000.bin</span>
                     </div>
 
                     <!-- Progress Scrubber -->
@@ -538,8 +723,8 @@
 
                     <!-- Speed & Mode Row -->
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-                        <span style="font-size:9px; color:var(--text-muted);">Playback Rate:</span>
-                        <select id="selSeqRate" style="background:#090d16; color:var(--cyan); border:1px solid var(--border-dim); border-radius:4px; padding:2px 6px; font-size:9px; font-family:'JetBrains Mono';">
+                        <span style="font-size:9.5px; color:var(--text-muted); font-weight:600;">Playback Rate:</span>
+                        <select id="selSeqRate" style="background:var(--bg-card); color:var(--primary); border:1px solid var(--border-dim); border-radius:4px; padding:3px 6px; font-size:9px; font-family:'JetBrains Mono'; font-weight:600;">
                             <option value="1">1 Hz (Slow Analysis)</option>
                             <option value="5">5 Hz</option>
                             <option value="10" selected>10 Hz (Nominal KITTI)</option>
@@ -550,7 +735,7 @@
 
                 <!-- Export 2.5D PLY Map Button -->
                 <button class="btn primary" id="btnExportPly" style="width:100%; padding:8px;">
-                    <span>📥 Export 2.5D PLY Map (Locked Palette)</span>
+                    <span>📥 Export 2.5D PLY Map (Standard Quality)</span>
                 </button>
 
                 <button class="btn" id="btnRecenter3D" style="width:100%;">
@@ -559,9 +744,9 @@
 
                 <!-- C++ Pipeline Live Telemetry -->
                 <div style="border-top:1px solid var(--border-dim); padding-top:10px;">
-                    <div style="font-size:10px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-main); text-transform:uppercase; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
                         <span>C++ Pipeline Metrics</span>
-                        <span id="pipelineStatusDot" style="width:7px;height:7px;border-radius:50%;background:#10b981;display:inline-block;"></span>
+                        <span id="pipelineStatusDot" style="width:7px;height:7px;border-radius:50%;background:#059669;display:inline-block;"></span>
                     </div>
                     <div class="metric-row">
                         <span class="metric-key">Raw LiDAR Points</span>
@@ -577,7 +762,7 @@
                     </div>
                     <div class="metric-row" style="margin-top:4px;">
                         <span class="metric-key">Network Labeled Points</span>
-                        <span class="metric-val" id="valNetPoints" style="color:var(--cyan);">—</span>
+                        <span class="metric-val" id="valNetPoints" style="color:var(--primary);">—</span>
                     </div>
                     <div class="metric-row" style="margin-top:4px;">
                         <span class="metric-key">Fallback Labeled Points</span>
@@ -589,10 +774,36 @@
                     </div>
                 </div>
 
+                <!-- Upload Panel (Strictly LiDAR Point Clouds) -->
+                <div style="border-top:1px solid var(--border-dim); padding-top:10px;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-main); text-transform:uppercase; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>📡 Upload LiDAR Point Cloud(s)</span>
+                        <span style="font-size:8.5px; color:var(--text-muted); font-family:'JetBrains Mono';">LiDAR Only</span>
+                    </div>
+
+                    <div class="upload-zone" id="uploadZone">
+                        <input type="file" id="uploadInput" accept=".bin,.pcd,.ply" multiple>
+                        <span class="upload-icon">🌐</span>
+                        <span class="upload-label">
+                            <strong>Drop LiDAR scans here</strong><br>
+                            or click to browse
+                        </span>
+                        <div class="format-badges">
+                            <span class="format-badge">.BIN</span>
+                            <span class="format-badge">.PCD</span>
+                            <span class="format-badge">.PLY</span>
+                        </div>
+                        <div class="upload-hint">Velodyne HDL64E · PointNet++ 3D Ingestion</div>
+                    </div>
+
+                    <!-- Queue -->
+                    <div class="upload-queue" id="uploadQueue"></div>
+                </div>
+
                 <!-- Sequence Info -->
-                <div style="border-top:1px solid var(--border-dim); padding-top:10px; font-size:9px; color:var(--text-muted); font-family:'JetBrains Mono';">
+                <div style="border-top:1px solid var(--border-dim); padding-top:10px; font-size:9.5px; color:var(--text-muted); font-family:'JetBrains Mono';">
                     <div>Dataset: <span style="color:var(--text-secondary);" id="lblDatasetDir">data/raw</span></div>
-                    <div style="margin-top:2px;">Format: SemanticKITTI Velodyne (.bin)</div>
+                    <div style="margin-top:2px;">Format: SemanticKITTI Velodyne (.bin, .pcd, .ply)</div>
                     <div style="margin-top:2px;">Output: PLY with Quality Verification</div>
                 </div>
             </div>
@@ -639,16 +850,16 @@
                 <!-- 3D HUD Legend -->
                 <div class="hud-legend" id="hudLegend">
                     <div class="legend-item">
-                        <span class="legend-dot" style="background:#10b981; box-shadow:0 0 8px #10b981;"></span>
+                        <span class="legend-dot" style="background:#059669;"></span>
                         <span>Road / Ground (Terrain)</span>
                     </div>
                     <div class="legend-item">
-                        <span class="legend-dot" style="background:#ffff00; box-shadow:0 0 8px #ffff00;"></span>
-                        <span>Tracked Dynamic Obstacles (Yellow)</span>
+                        <span class="legend-dot" style="background:#ea580c;"></span>
+                        <span>Tracked Dynamic Obstacles (Orange/Amber)</span>
                     </div>
                     <div class="legend-item">
-                        <span class="legend-dot" style="background:#00f3ff; box-shadow:0 0 8px #00f3ff;"></span>
-                        <span>Structures / Roadside (Cyan)</span>
+                        <span class="legend-dot" style="background:#2563eb;"></span>
+                        <span>Structures / Roadside (Sapphire Blue)</span>
                     </div>
                 </div>
             </div>
@@ -657,7 +868,7 @@
         <!-- RIGHT PANEL: Obstacle Tracking Telemetry & Console -->
         <aside class="glass-panel">
             <div class="panel-header">
-                <span class="panel-title"><span class="dot" style="background:#ffff00; box-shadow:0 0 8px #ffff00;"></span> Tracked Obstacles</span>
+                <span class="panel-title"><span class="dot" style="background:#ea580c;"></span> Tracked Obstacles</span>
                 <span class="canvas-tag" id="tagActiveTracks">0 ACTIVE</span>
             </div>
 
@@ -681,7 +892,7 @@
 
                 <!-- Execution Breakdown -->
                 <div style="border-top:1px solid var(--border-dim); padding-top:10px;">
-                    <div style="font-size:10px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; margin-bottom:6px;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-main); text-transform:uppercase; margin-bottom:6px;">
                         Native Execution Breakdown (x86_64)
                     </div>
                     <div class="metric-row">
@@ -690,7 +901,7 @@
                     </div>
                     <div class="metric-row" style="margin-top:3px;">
                         <span class="metric-key">PointNet++ ONNX Inference</span>
-                        <span class="metric-val" id="metInference" style="color:var(--cyan);">— ms</span>
+                        <span class="metric-val" id="metInference" style="color:var(--primary);">— ms</span>
                     </div>
                     <div class="metric-row" style="margin-top:3px;">
                         <span class="metric-key">Kalman Object Tracking</span>
@@ -704,7 +915,7 @@
 
                 <!-- Console Log -->
                 <div style="border-top:1px solid var(--border-dim); padding-top:10px; flex:1; display:flex; flex-direction:column;">
-                    <div style="font-size:10px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; margin-bottom:4px;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-main); text-transform:uppercase; margin-bottom:4px;">
                         Runtime Log
                     </div>
                     <div class="terminal-box" id="termLogs">
@@ -728,6 +939,46 @@
                 }
             } catch (_) {}
         });
+
+        // Theme management
+        let isDarkMode = false;
+        const btnThemeToggle = document.getElementById('btnThemeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const themeLabel = document.getElementById('themeLabel');
+
+        function applyTheme(dark) {
+            isDarkMode = dark;
+            if (isDarkMode) {
+                document.body.classList.add('dark-theme');
+                if (themeIcon) themeIcon.textContent = '🌙';
+                if (themeLabel) themeLabel.textContent = 'Dark';
+                if (scene) scene.background = new THREE.Color(0x020408);
+                if (gridHelper) {
+                    scene.remove(gridHelper);
+                    gridHelper = new THREE.GridHelper(100, 50, 0x00f3ff, 0x1e293b);
+                    gridHelper.position.y = -1.60;
+                    scene.add(gridHelper);
+                }
+            } else {
+                document.body.classList.remove('dark-theme');
+                if (themeIcon) themeIcon.textContent = '☀️';
+                if (themeLabel) themeLabel.textContent = 'Light';
+                if (scene) scene.background = new THREE.Color(0xf1f5f9);
+                if (gridHelper) {
+                    scene.remove(gridHelper);
+                    gridHelper = new THREE.GridHelper(100, 50, 0x2563eb, 0xd8e0ea);
+                    gridHelper.position.y = -1.60;
+                    scene.add(gridHelper);
+                }
+            }
+            if (activeTab === 'BEV') render2DGrid();
+        }
+
+        if (btnThemeToggle) {
+            btnThemeToggle.addEventListener('click', () => {
+                applyTheme(!isDarkMode);
+            });
+        }
 
         // State variables (Strictly LiDAR-Only)
         let activeTab = '3D'; // '3D' or 'BEV'
@@ -787,7 +1038,7 @@
             if (!container) return;
 
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x020408);
+            scene.background = new THREE.Color(0xf1f5f9);
 
             const aspect = container.clientWidth / container.clientHeight;
             camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
@@ -799,23 +1050,28 @@
             container.appendChild(renderer.domElement);
 
             // 3D Reference Grid (Ground plane at Y = -1.60m)
-            gridHelper = new THREE.GridHelper(100, 50, 0x00f3ff, 0x1e293b);
+            gridHelper = new THREE.GridHelper(100, 50, 0x2563eb, 0xd8e0ea);
             gridHelper.position.y = -1.60;
             scene.add(gridHelper);
 
             // Ego Vehicle Marker (At origin)
             const egoGeo = new THREE.BoxGeometry(2.0, 1.5, 4.5);
             const egoEdges = new THREE.EdgesGeometry(egoGeo);
-            const egoMat = new THREE.LineBasicMaterial({ color: 0x00f3ff, linewidth: 2 });
+            const egoMat = new THREE.LineBasicMaterial({ color: 0x1d4ed8, linewidth: 2 });
             const egoBox = new THREE.LineSegments(egoEdges, egoMat);
             egoBox.position.set(0, -0.85, 0);
             scene.add(egoBox);
+
+            const egoMeshMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.18 });
+            const egoMesh = new THREE.Mesh(egoGeo, egoMeshMat);
+            egoMesh.position.set(0, -0.85, 0);
+            scene.add(egoMesh);
 
             // Bounding Boxes Group for Tracked Vehicles
             boundingBoxesGroup = new THREE.Group();
             scene.add(boundingBoxesGroup);
 
-            // Interactive Orbit Controls (Lightweight native implementation)
+            // Interactive Orbit Controls
             setupOrbitControls(container);
 
             window.addEventListener('resize', onWindowResize);
@@ -862,41 +1118,38 @@
                     updateCameraPosition();
                 } else if (e.buttons === 2) { // Right-click: Pan
                     const right = new THREE.Vector3().crossVectors(camera.up, camera.getWorldDirection(new THREE.Vector3())).normalize();
-                    cameraTarget.addScaledVector(right, deltaX * 0.05);
-                    cameraTarget.y += deltaY * 0.05;
+                    cameraTarget.addScaledVector(right, -deltaX * 0.04);
+                    cameraTarget.y += deltaY * 0.04;
                     updateCameraPosition();
                 }
             });
 
-            domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-
             domElement.addEventListener('wheel', (e) => {
-                e.preventDefault();
                 spherical.radius = Math.max(5, Math.min(150, spherical.radius + e.deltaY * 0.05));
                 updateCameraPosition();
+                e.preventDefault();
             }, { passive: false });
 
-            updateCameraPosition();
+            domElement.addEventListener('contextmenu', (e) => e.preventDefault());
         }
 
         function updateCameraPosition() {
             if (!camera) return;
-            const x = cameraTarget.x + spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
-            const y = cameraTarget.y + spherical.radius * Math.cos(spherical.phi);
-            const z = cameraTarget.z + spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
-            camera.position.set(x, y, z);
+            camera.position.x = cameraTarget.x + spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+            camera.position.y = cameraTarget.y + spherical.radius * Math.cos(spherical.phi);
+            camera.position.z = cameraTarget.z + spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
             camera.lookAt(cameraTarget);
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (activeTab === '3D' && renderer && scene && camera) {
+            if (renderer && scene && camera) {
                 renderer.render(scene, camera);
             }
         }
 
         // =========================================================================
-        // LIDAR POINT CLOUD RENDERING WITH LOCKED PALETTE
+        // LIDAR POINT CLOUD RENDERING WITH HIGH-CONTRAST PALETTE
         // =========================================================================
         function updateThreePointCloud() {
             if (!scene) return;
@@ -913,25 +1166,26 @@
                 positions[i * 3 + 1] = pt.y;
                 positions[i * 3 + 2] = pt.z;
 
-                let r = 0.06, g = 0.73, b = 0.50; // TERRAIN: Emerald Green #10B981
+                // Default: Terrain (#059669 Emerald Green)
+                let r = 0.02, g = 0.59, b = 0.41;
 
                 if (colorMode === 'semantics') {
                     if (pt.semClass === 2) {
-                        // Dynamic Obstacle (Vehicle / Pedestrian): Electric Amber / Yellow (#ffff00)
-                        r = 1.0; g = 1.0; b = 0.0;
+                        // Dynamic Obstacle (Vehicle / Pedestrian): Radiant Electric Amber / Orange (#ea580c)
+                        r = 0.92; g = 0.35; b = 0.05;
                     } else if (pt.semClass === 1) {
-                        // Static Obstacle (Curbs / Structures): Cyan (#00f3ff)
-                        r = 0.0; g = 0.95; b = 1.0;
+                        // Static Obstacle (Curbs / Structures / Poles): Deep Royal Sapphire (#2563eb)
+                        r = 0.15; g = 0.39; b = 0.92;
                     } else if (pt.semClass === 255) {
-                        // UNKNOWN: Slate Grey
-                        r = 0.5; g = 0.5; b = 0.5;
+                        // UNKNOWN: Medium Slate Grey
+                        r = 0.40; g = 0.45; b = 0.55;
                     }
                 } else if (colorMode === 'elevation') {
                     const normY = THREE.MathUtils.clamp((pt.y + 2.5) / 5.0, 0, 1);
                     r = normY; g = 1.0 - Math.abs(normY - 0.5) * 2; b = 1.0 - normY;
                 } else if (colorMode === 'intensity') {
                     const val = THREE.MathUtils.clamp(pt.intensity || 0.5, 0.1, 1.0);
-                    r = val; g = val * 0.9; b = val * 0.6;
+                    r = 0.1 + val * 0.8; g = 0.2 + val * 0.6; b = 0.3 + val * 0.4;
                 }
 
                 colors[i * 3]     = r;
@@ -945,11 +1199,11 @@
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
                 const material = new THREE.PointsMaterial({
-                    size: 1.8,
+                    size: 2.2,
                     vertexColors: true,
                     sizeAttenuation: true,
                     transparent: true,
-                    opacity: 0.92
+                    opacity: 0.95
                 });
 
                 lidarPointCloud = new THREE.Points(geometry, material);
@@ -977,10 +1231,15 @@
                 const bl = tr.l || 4.5;
                 const boxGeo = new THREE.BoxGeometry(bw, bh, bl);
                 const edgeGeo = new THREE.EdgesGeometry(boxGeo);
-                const edgeMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0xea580c, linewidth: 2.5 });
                 const box = new THREE.LineSegments(edgeGeo, edgeMat);
                 box.position.set(tr.x, (tr.y || -0.8) + bh / 2, tr.z);
                 boundingBoxesGroup.add(box);
+
+                const fillMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.18 });
+                const fillMesh = new THREE.Mesh(boxGeo, fillMat);
+                fillMesh.position.set(tr.x, (tr.y || -0.8) + bh / 2, tr.z);
+                boundingBoxesGroup.add(fillMesh);
             });
         }
 
@@ -1004,8 +1263,8 @@
                 const heading = (tr.vx || 0) !== 0 ? (Math.atan2(tr.vx, tr.vy) * 180 / Math.PI).toFixed(1) : '0.0';
                 const sign = parseFloat(heading) >= 0 ? '+' : '';
                 return `<tr>
-                    <td style="color:#ffff00; font-weight:700;">#${tr.id}</td>
-                    <td>${tr.cls || 'Vehicle'}</td>
+                    <td style="color:#ea580c; font-weight:700;">#${tr.id}</td>
+                    <td style="font-weight:600;">${tr.cls || 'Vehicle'}</td>
                     <td>${range}m</td>
                     <td>${speedKph} km/h</td>
                     <td>${sign}${heading}°</td>
@@ -1027,7 +1286,7 @@
                 canvas.height = h;
             }
 
-            ctx.fillStyle = '#030508';
+            ctx.fillStyle = isDarkMode ? '#030508' : '#f8fafc';
             ctx.fillRect(0, 0, w, h);
 
             const cx = w / 2;
@@ -1039,20 +1298,22 @@
             ctx.lineWidth = 1;
             [10, 20, 30, 40, 50, 60].forEach(r => {
                 const rad = r * scale;
-                ctx.strokeStyle = (r === 30 || r === 60) ? 'rgba(0, 243, 255, 0.25)' : 'rgba(56, 189, 248, 0.1)';
+                ctx.strokeStyle = (r === 30 || r === 60) ? 
+                    (isDarkMode ? 'rgba(0, 243, 255, 0.25)' : 'rgba(37, 99, 235, 0.35)') : 
+                    (isDarkMode ? 'rgba(56, 189, 248, 0.1)' : 'rgba(203, 213, 225, 0.7)');
                 ctx.beginPath();
                 ctx.arc(cx, cy, rad, 0, Math.PI * 2);
                 ctx.stroke();
 
-                ctx.fillStyle = 'rgba(255,255,255,0.4)';
-                ctx.font = '9px JetBrains Mono';
+                ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.4)' : '#64748b';
+                ctx.font = '600 9px JetBrains Mono';
                 ctx.fillText(`${r}m`, cx + 4, cy - rad + 11);
             });
 
             // Radial Azimuth Rays
             for (let a = 0; a < 360; a += 45) {
                 const rad = a * Math.PI / 180;
-                ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+                ctx.strokeStyle = isDarkMode ? 'rgba(56, 189, 248, 0.08)' : 'rgba(226, 232, 240, 0.8)';
                 ctx.beginPath();
                 ctx.moveTo(cx, cy);
                 ctx.lineTo(cx + Math.sin(rad) * 60 * scale, cy - Math.cos(rad) * 60 * scale);
@@ -1069,15 +1330,15 @@
                     const sz = Math.max(2, cell.res * scale * 0.95);
 
                     if (cell.class === 2) {
-                        ctx.fillStyle = 'rgba(255, 255, 0, 0.85)';
+                        ctx.fillStyle = 'rgba(234, 88, 12, 0.95)';
                         ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
                         dynCount++;
                     } else if (cell.class === 1) {
-                        ctx.fillStyle = 'rgba(0, 243, 255, 0.55)';
+                        ctx.fillStyle = 'rgba(37, 99, 235, 0.75)';
                         ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
                         staticCount++;
                     } else {
-                        ctx.fillStyle = 'rgba(16, 185, 129, 0.40)';
+                        ctx.fillStyle = 'rgba(5, 150, 105, 0.55)';
                         ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
                         terrainCount++;
                     }
@@ -1088,15 +1349,15 @@
                     const sy = cy - pt.z * scale;
                     if (sx < 0 || sx > w || sy < 0 || sy > h) return;
                     if (pt.semClass === 2) {
-                        ctx.fillStyle = 'rgba(255, 255, 0, 0.95)';
+                        ctx.fillStyle = 'rgba(234, 88, 12, 0.95)';
                         ctx.fillRect(sx - 3, sy - 3, 6, 6);
                         dynCount++;
                     } else if (pt.semClass === 1) {
-                        ctx.fillStyle = 'rgba(0, 243, 255, 0.55)';
+                        ctx.fillStyle = 'rgba(37, 99, 235, 0.75)';
                         ctx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
                         staticCount++;
                     } else {
-                        ctx.fillStyle = 'rgba(16, 185, 129, 0.35)';
+                        ctx.fillStyle = 'rgba(5, 150, 105, 0.50)';
                         ctx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
                         terrainCount++;
                     }
@@ -1110,20 +1371,19 @@
                 const bw = (tr.w || 2.0) * scale;
                 const bl = (tr.l || 4.5) * scale;
 
-                ctx.strokeStyle = '#ffff00';
+                ctx.strokeStyle = '#ea580c';
                 ctx.lineWidth = 2;
-                ctx.shadowColor = '#ffff00';
-                ctx.shadowBlur = 8;
                 ctx.strokeRect(sx - bw / 2, sy - bl / 2, bw, bl);
-                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
+                ctx.fillRect(sx - bw / 2, sy - bl / 2, bw, bl);
 
-                ctx.fillStyle = '#ffff00';
+                ctx.fillStyle = '#ea580c';
                 ctx.font = 'bold 10px JetBrains Mono';
                 ctx.fillText(`#${tr.id} ${tr.cls || 'Vehicle'}`, sx - bw / 2, sy - bl / 2 - 4);
 
                 const speed = Math.sqrt((tr.vx || 0)**2 + (tr.vy || 0)**2);
                 if (speed > 0.1) {
-                    ctx.strokeStyle = '#ffff00';
+                    ctx.strokeStyle = '#ea580c';
                     ctx.lineWidth = 1.5;
                     ctx.beginPath();
                     ctx.moveTo(sx, sy);
@@ -1133,84 +1393,80 @@
             });
 
             // Ego Vehicle Symbol
-            ctx.shadowColor = '#00f3ff';
-            ctx.shadowBlur = 12;
-            ctx.fillStyle = '#00f3ff';
+            ctx.fillStyle = '#2563eb';
             ctx.beginPath();
-            ctx.moveTo(cx, cy - 9);
-            ctx.lineTo(cx + 6, cy + 9);
-            ctx.lineTo(cx, cy + 5);
-            ctx.lineTo(cx - 6, cy + 9);
+            ctx.moveTo(cx, cy - 10);
+            ctx.lineTo(cx + 7, cy + 10);
+            ctx.lineTo(cx, cy + 6);
+            ctx.lineTo(cx - 7, cy + 10);
             ctx.closePath();
             ctx.fill();
-            ctx.shadowBlur = 0;
 
-            ctx.font = 'bold 9px JetBrains Mono';
-            ctx.fillStyle = '#00f3ff';
+            ctx.font = 'bold 9.5px JetBrains Mono';
+            ctx.fillStyle = '#1d4ed8';
             ctx.textAlign = 'center';
-            ctx.fillText('EGO', cx, cy + 20);
+            ctx.fillText('EGO', cx, cy + 22);
             ctx.textAlign = 'left';
 
             // HUD Legend
-            const hudX = 14, hudY = h - 68;
-            ctx.fillStyle = 'rgba(6,9,14,0.85)';
-            ctx.strokeStyle = 'rgba(56,189,248,0.2)';
+            const hudX = 14, hudY = h - 72;
+            ctx.fillStyle = isDarkMode ? 'rgba(6,9,14,0.85)' : 'rgba(255, 255, 255, 0.94)';
+            ctx.strokeStyle = isDarkMode ? 'rgba(56,189,248,0.2)' : '#cbd5e1';
             ctx.lineWidth = 1;
-            ctx.fillRect(hudX - 4, hudY - 12, 185, 68);
-            ctx.strokeRect(hudX - 4, hudY - 12, 185, 68);
+            ctx.fillRect(hudX - 4, hudY - 12, 195, 74);
+            ctx.strokeRect(hudX - 4, hudY - 12, 195, 74);
 
             ctx.font = 'bold 9px JetBrains Mono';
-            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.8)' : '#334155';
             ctx.fillText('2.5D OCCUPANCY GRID', hudX, hudY);
 
-            const classes = [
-                { col: '#10b981', label: `TERRAIN / ROAD`, count: terrainCount },
-                { col: '#00f3ff', label: `STATIC (curbs)`, count: staticCount },
-                { col: '#ffff00', label: `DYNAMIC (vehicles)`, count: dynCount }
-            ];
-            classes.forEach((c, i) => {
-                const y = hudY + 14 + i * 14;
-                ctx.fillStyle = c.col;
-                ctx.fillRect(hudX, y - 7, 8, 8);
-                ctx.fillStyle = 'rgba(255,255,255,0.85)';
-                ctx.font = '9px JetBrains Mono';
-                ctx.fillText(`${c.label}  ${c.count.toLocaleString()}`, hudX + 12, y);
-            });
+            ctx.fillStyle = '#059669';
+            ctx.fillRect(hudX, hudY + 8, 8, 8);
+            ctx.font = '9px JetBrains Mono';
+            ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.7)' : '#475569';
+            ctx.fillText('Terrain (Road Surface)', hudX + 14, hudY + 15);
+
+            ctx.fillStyle = '#ea580c';
+            ctx.fillRect(hudX, hudY + 22, 8, 8);
+            ctx.fillText('Dynamic Obstacles (Orange)', hudX + 14, hudY + 29);
+
+            ctx.fillStyle = '#2563eb';
+            ctx.fillRect(hudX, hudY + 36, 8, 8);
+            ctx.fillText('Static Obstacles (Blue)', hudX + 14, hudY + 43);
         }
 
         // =========================================================================
-        // HTTP API COMMUNICATION WITH NATIVE C++ BACKEND
+        // BACKEND API CLIENT & PIPELINE TELEMETRY
         // =========================================================================
         async function fetchLidarScan() {
             try {
-                const resp = await fetch('/api/lidar/scan');
-                if (!resp.ok) return;
-                const data = await resp.json();
-                if (data.status !== 'ok') return;
+                const res = await fetch('/api/lidar/scan');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
 
                 const dot = document.getElementById('pipelineStatusDot');
-                if (dot) { dot.style.background = '#10b981'; dot.style.boxShadow = '0 0 6px #10b981'; }
+                if (dot) { dot.style.background = '#059669'; }
 
-                // Ingest 3D points
-                if (data.points) {
+                // Parse 3D Point Cloud
+                if (data.points && Array.isArray(data.points)) {
                     lidarPoints = data.points.map(p => ({
-                        x: -p[1],           // lateral in Three.js (-KITTI Y)
-                        y:  p[2],           // elevation in Three.js (KITTI Z)
-                        z:  p[0],           // forward in Three.js (KITTI X)
-                        intensity: p[3],
-                        semClass: p[4],
-                        confidence: p[5]
+                        x: -p.y,
+                        y:  p.z,
+                        z:  p.x,
+                        semClass: p.class !== undefined ? p.class : 0,
+                        intensity: p.intensity || 0.5,
+                        confidence: p.confidence || 1.0
                     }));
                     updateThreePointCloud();
                 }
 
-                // Ingest 2.5D cells
-                if (data.cells) {
-                    gridCells = data.cells;
+                // Parse 2.5D Quadtree Grid Cells
+                if (data.grid_cells && Array.isArray(data.grid_cells)) {
+                    gridCells = data.grid_cells;
                 }
 
-                // Ingest Kalman tracks
-                if (data.tracks) {
+                // Parse Kalman Tracked Obstacles
+                if (data.tracks && Array.isArray(data.tracks)) {
                     tracksData = data.tracks.map(t => ({
                         id:  t.id,
                         cls: t.class,
@@ -1283,7 +1539,7 @@
 
             } catch (err) {
                 const dot = document.getElementById('pipelineStatusDot');
-                if (dot) { dot.style.background = '#ef4444'; dot.style.boxShadow = 'none'; }
+                if (dot) { dot.style.background = '#ef4444'; }
             }
         }
 
@@ -1306,7 +1562,7 @@
 
         async function stepSequencePrev() {
             try {
-                await fetch('/api/frame/prev', { method: 'POST' });
+                const resp = await fetch('/api/frame/prev', { method: 'POST' });
                 await fetchLidarScan();
             } catch (e) {
                 console.error("Step prev error:", e);
@@ -1370,14 +1626,15 @@
 
         btnSeqLoop.addEventListener('click', () => {
             isLooping = !isLooping;
-            btnSeqLoop.style.background = isLooping ? 'rgba(0, 243, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+            btnSeqLoop.style.background = isLooping ? 'var(--primary-light)' : 'var(--bg-card)';
+            btnSeqLoop.style.color = isLooping ? 'var(--primary)' : 'var(--text-main)';
             appendLog(`Sequence Loop: ${isLooping ? 'ENABLED' : 'DISABLED'}`, 'info');
         });
 
         selSeqRate.addEventListener('change', (e) => {
             playbackRateHz = parseInt(e.target.value) || 10;
             if (isPlaying) {
-                startPlayback(); // restart interval with new rate
+                startPlayback();
             }
         });
 
@@ -1451,6 +1708,7 @@
         window.addEventListener('DOMContentLoaded', () => {
             initThree();
             fetchLidarScan();
+
             // Polling status updates when paused
             setInterval(() => {
                 if (!isPlaying) {
@@ -1459,6 +1717,116 @@
                     }).catch(() => {});
                 }
             }, 3000);
+
+            // ── LiDAR Scan Upload Logic (Strictly LiDAR .bin, .pcd, .ply) ───────
+            const uploadZone  = document.getElementById('uploadZone');
+            const uploadInput = document.getElementById('uploadInput');
+            const uploadQueue = document.getElementById('uploadQueue');
+
+            // Drag-and-drop visual feedback
+            ['dragenter','dragover'].forEach(evt => {
+                uploadZone.addEventListener(evt, e => {
+                    e.preventDefault(); e.stopPropagation();
+                    uploadZone.classList.add('drag-over');
+                });
+            });
+            ['dragleave','dragend'].forEach(evt => {
+                uploadZone.addEventListener(evt, () => uploadZone.classList.remove('drag-over'));
+            });
+            uploadZone.addEventListener('drop', e => {
+                e.preventDefault(); e.stopPropagation();
+                uploadZone.classList.remove('drag-over');
+                handleFiles(Array.from(e.dataTransfer.files));
+            });
+            uploadInput.addEventListener('change', e => {
+                handleFiles(Array.from(e.target.files));
+                e.target.value = '';
+            });
+
+            /**
+             * Validate and queue files, then upload sequentially.
+             * Only .bin, .pcd, and .ply files are accepted.
+             */
+            async function handleFiles(files) {
+                const isLidar = f => {
+                    const l = f.name.toLowerCase();
+                    return l.endsWith('.bin') || l.endsWith('.pcd') || l.endsWith('.ply');
+                };
+
+                const valid = files.filter(isLidar);
+                const invalid = files.filter(f => !isLidar(f));
+
+                if (invalid.length > 0) {
+                    const names = invalid.map(f => f.name).join(', ');
+                    appendLog(`[Upload] Rejected non-LiDAR file(s): ${names}. Only .bin/.pcd/.ply point clouds are supported.`, 'warn');
+                }
+                if (valid.length === 0) return;
+
+                // Sort by name so multi-file upload preserves sequence order
+                valid.sort((a, b) => a.name.localeCompare(b.name));
+
+                // Upload sequentially
+                for (const file of valid) {
+                    await uploadScan(file);
+                }
+            }
+
+            /**
+             * Upload a single LiDAR scan to C++ backend.
+             */
+            async function uploadScan(file) {
+                const itemEl = addQueueItem(file.name);
+                setItemState(itemEl, 'uploading', '⏳', '—');
+
+                try {
+                    const buf = await file.arrayBuffer();
+                    const encoded = encodeURIComponent(file.name);
+                    const resp = await fetch(`/api/lidar/upload?filename=${encoded}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/octet-stream' },
+                        body: buf
+                    });
+
+                    if (!resp.ok) {
+                        const err = await resp.json().catch(() => ({ error: resp.statusText }));
+                        setItemState(itemEl, 'error', '✗', 'ERR');
+                        appendLog(`[Upload] ${file.name}: ${err.error || resp.statusText}`, 'warn');
+                        return;
+                    }
+
+                    const data = await resp.json();
+                    const pts = data.upload?.points_loaded ?? '?';
+                    const frameIdx = data.upload?.frame_index ?? '?';
+                    setItemState(itemEl, 'done', '✓', `${pts.toLocaleString()} pts`);
+                    appendLog(`[Upload] ${file.name} → Frame #${frameIdx + 1} | ${pts.toLocaleString()} pts | ${data.metrics?.active_cells ?? '?'} cells`, 'ok');
+
+                    // Refresh live scan visualization immediately
+                    await fetchLidarScan();
+
+                } catch (err) {
+                    setItemState(itemEl, 'error', '✗', 'NET ERR');
+                    appendLog(`[Upload] ${file.name}: Network error — ${err.message}`, 'warn');
+                }
+            }
+
+            function addQueueItem(name) {
+                const el = document.createElement('div');
+                el.className = 'upload-item';
+                el.innerHTML = `
+                    <span class="upload-status-icon">⏺</span>
+                    <span class="upload-item-name">${name}</span>
+                    <span class="upload-item-pts">—</span>
+                `;
+                uploadQueue.appendChild(el);
+                uploadQueue.scrollTop = uploadQueue.scrollHeight;
+                return el;
+            }
+
+            function setItemState(el, cls, icon, ptsText) {
+                el.className = `upload-item ${cls}`;
+                el.querySelector('.upload-status-icon').textContent = icon;
+                el.querySelector('.upload-item-pts').textContent = ptsText;
+            }
         });
     </script>
 </body>

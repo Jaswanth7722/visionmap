@@ -23,7 +23,7 @@ from python.training.dataset import CLASS_NAMES
 from python.inference_demo import export_ply
 
 ONNX_MODEL = "models/onnx/pointnet2_semseg.onnx"
-OUTPUT_DIR = "images/hard_cases"
+OUTPUT_DIR = "results/hard_cases"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
@@ -251,7 +251,7 @@ def run_evaluation():
 
     with open(os.path.join(OUTPUT_DIR, "hard_cases_results.json"), "w") as f:
         json.dump(report_data, f, indent=2)
-    print("\nSaved evaluation results to: images/hard_cases/hard_cases_results.json")
+    print("\nSaved evaluation results to: results/hard_cases/hard_cases_results.json")
 
 
 if __name__ == "__main__":

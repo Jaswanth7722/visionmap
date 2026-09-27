@@ -31,6 +31,21 @@ public:
                            const std::string& remap_path = "config/semantickitti_remap.txt");
 
     /**
+     * @brief Load point cloud in any supported LiDAR format (.bin, .pcd, .ply).
+     */
+    static bool loadPointCloud(const std::string& filepath, PointCloud& out_cloud);
+
+    /**
+     * @brief Load PCD point cloud file (ASCII or binary).
+     */
+    static bool loadPCD(const std::string& filepath, PointCloud& out_cloud);
+
+    /**
+     * @brief Load PLY point cloud file (ASCII or binary).
+     */
+    static bool loadPLY(const std::string& filepath, PointCloud& out_cloud);
+
+    /**
      * @brief Write point cloud to PLY file with RGB semantic coloring
      */
     static bool writePLY(const std::string& filepath, const PointCloud& cloud);
