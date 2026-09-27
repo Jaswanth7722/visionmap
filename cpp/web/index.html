@@ -2158,6 +2158,38 @@
             });
 
             /**
+             * Reset all visual data so that newly uploaded files start with a clean slate.
+             */
+            function clearCurrentVisualData() {
+                lidarPoints = [];
+                gridCells = [];
+                tracksData = [];
+
+                if (lidarPointCloud) {
+                    scene.remove(lidarPointCloud);
+                    lidarPointCloud.geometry.dispose();
+                    if (lidarPointCloud.material) lidarPointCloud.material.dispose();
+                    lidarPointCloud = null;
+                }
+                if (boundingBoxesGroup) {
+                    while (boundingBoxesGroup.children.length > 0) boundingBoxesGroup.remove(boundingBoxesGroup.children[0]);
+                }
+                if (staticStructuresGroup) {
+                    while (staticStructuresGroup.children.length > 0) staticStructuresGroup.remove(staticStructuresGroup.children[0]);
+                }
+
+                render2DGrid();
+
+                const tagPointsCount = document.getElementById('tagPointsCount');
+                if (tagPointsCount) tagPointsCount.innerText = 'POINTS: REFRESHING...';
+
+                const tbody = document.getElementById('tracksTableBody');
+                if (tbody) tbody.innerHTML = '<tr id="tracks-empty-row"><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">Refreshing scan data...</td></tr>';
+                const sbody = document.getElementById('staticTableBody');
+                if (sbody) sbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px 0;">Refreshing static structures...</td></tr>';
+            }
+
+            /**
              * Validate and queue files, then upload sequentially.
              * Only .bin, .pcd, and .ply files are accepted.
              */
@@ -2176,26 +2208,34 @@
                 }
                 if (valid.length === 0) return;
 
+                // Clear previous queue list in UI
+                uploadQueue.innerHTML = '';
+
+                // Clear out previous visual data so old points/cells/tracks are deleted
+                clearCurrentVisualData();
+
                 // Sort by name so multi-file upload preserves sequence order
                 valid.sort((a, b) => a.name.localeCompare(b.name));
 
-                // Upload sequentially
-                for (const file of valid) {
-                    await uploadScan(file);
+                // Upload sequentially: first file resets C++ pipeline and deletes old data
+                for (let i = 0; i < valid.length; i++) {
+                    const isFirst = (i === 0);
+                    await uploadScan(valid[i], isFirst);
                 }
             }
 
             /**
              * Upload a single LiDAR scan to C++ backend.
              */
-            async function uploadScan(file) {
+            async function uploadScan(file, doReset = true) {
                 const itemEl = addQueueItem(file.name);
                 setItemState(itemEl, 'uploading', '⏳', '—');
 
                 try {
                     const buf = await file.arrayBuffer();
                     const encoded = encodeURIComponent(file.name);
-                    const resp = await fetch(`/api/lidar/upload?filename=${encoded}`, {
+                    const resetParam = doReset ? '&reset=true' : '&reset=false';
+                    const resp = await fetch(`/api/lidar/upload?filename=${encoded}${resetParam}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/octet-stream' },
                         body: buf
@@ -2210,9 +2250,10 @@
 
                     const data = await resp.json();
                     const pts = data.upload?.points_loaded ?? '?';
-                    const frameIdx = data.upload?.frame_index ?? '?';
+                    const frameIdx = data.upload?.frame_index ?? 0;
+                    const refreshed = data.upload?.data_refreshed ? ' [Old Data Cleared]' : '';
                     setItemState(itemEl, 'done', '✓', `${pts.toLocaleString()} pts`);
-                    appendLog(`[Upload] ${file.name} → Frame #${frameIdx + 1} | ${pts.toLocaleString()} pts | ${data.metrics?.active_cells ?? '?'} cells`, 'ok');
+                    appendLog(`[Upload] ${file.name} → Frame #${frameIdx + 1}${refreshed} | ${pts.toLocaleString()} pts | ${data.metrics?.active_cells ?? '?'} cells`, 'ok');
 
                     // Refresh live scan visualization immediately
                     await fetchLidarScan();

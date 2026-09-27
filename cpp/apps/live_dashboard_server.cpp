@@ -735,6 +735,14 @@ private:
             out.write(body.data(), static_cast<std::streamsize>(body.size()));
         }
 
+        // Parse reset / append parameters from query string
+        std::string reset_param = parse_param("reset");
+        std::string append_param = parse_param("append");
+        bool do_reset = true; // Default: fresh load, clear old data
+        if (reset_param == "false" || reset_param == "0" || append_param == "true" || append_param == "1") {
+            do_reset = false;
+        }
+
         std::lock_guard<std::mutex> lock(mtx_);
 
         // Process the uploaded scan immediately through the pipeline
@@ -745,34 +753,57 @@ private:
             return;
         }
 
-        // Append to the live sequence
-        seq_scans_.push_back(save_path);
-        size_t new_frame_idx = seq_scans_.size() - 1;
-        seq_index_ = new_frame_idx;
-        raw_scan_ = raw_scan;
+        if (do_reset) {
+            // Delete previous files in uploads/ so obsolete uploads don't accumulate
+            std::error_code ec;
+            for (const auto& entry : std::filesystem::directory_iterator("uploads", ec)) {
+                if (entry.is_regular_file(ec) && entry.path().string() != save_path) {
+                    std::filesystem::remove(entry.path(), ec);
+                }
+            }
 
-        // Run full pipeline
-        double ts = new_frame_idx * 0.1;
-        latest_metrics_ = pipeline_->processFrame(raw_scan_, ts, static_cast<int>(new_frame_idx));
+            // Fresh reconstruction of MappingPipeline — completely erases old quadtree cells & Kalman tracks!
+            pipeline_ = std::make_unique<ps26053::MappingPipeline>(model_path_);
+            pipeline_->initialize();
+            pipeline_->loadConfig("config");
+
+            seq_scans_.clear();
+            seq_scans_.push_back(save_path);
+            seq_index_ = 0;
+            loop_time_offset_ = 0.0;
+            loop_wraps_ = 0;
+        } else {
+            seq_scans_.push_back(save_path);
+            seq_index_ = seq_scans_.size() - 1;
+        }
+
+        raw_scan_ = raw_scan;
+        size_t current_idx = seq_index_;
+
+        // Run fresh pipeline on the scan
+        double ts = current_idx * 0.1;
+        latest_metrics_ = pipeline_->processFrame(raw_scan_, ts, static_cast<int>(current_idx));
         scan_processed_ = true;
 
         // Export PLY for this frame
         char fname_buf[64];
         std::snprintf(fname_buf, sizeof(fname_buf),
-            "results/maps/adaptive_map_frame%06zu.ply", new_frame_idx);
+            "results/maps/adaptive_map_frame%06zu.ply", current_idx);
         std::filesystem::create_directories("results/maps");
         pipeline_->getGrid().exportToPLY(fname_buf);
 
         // Return scan JSON (same format as /api/lidar/scan)
         std::ostringstream ss;
+        ss << std::fixed << std::setprecision(2);
         ss << "{\n";
         ss << "  \"status\": \"ok\",\n";
         ss << "  \"upload\": {\n";
         ss << "    \"filename\": \"" << filename_hint << "\",\n";
         ss << "    \"bytes\": " << body.size() << ",\n";
         ss << "    \"points_loaded\": " << raw_scan.size() << ",\n";
-        ss << "    \"frame_index\": " << new_frame_idx << ",\n";
-        ss << "    \"total_frames\": " << seq_scans_.size() << "\n";
+        ss << "    \"frame_index\": " << current_idx << ",\n";
+        ss << "    \"total_frames\": " << seq_scans_.size() << ",\n";
+        ss << "    \"data_refreshed\": " << (do_reset ? "true" : "false") << "\n";
         ss << "  },\n";
         ss << "  \"metrics\": {\n";
         ss << "    \"active_cells\": " << latest_metrics_.active_cells << ",\n";
