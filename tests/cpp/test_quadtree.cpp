@@ -104,7 +104,67 @@ int main() {
         assert(leaf != nullptr);
         assert(leaf->bounds.contains(0.7f, 0.7f));
         assert(std::abs(leaf->resolution - 0.125f) < 1e-6f);
+        assert(leaf->depth == 3); // Depth 3 verified
         assert(deep.findLeaf(5.0f, 5.0f) == nullptr);
+    }
+
+    // Task 9 Comprehensive Invariants:
+    // 1. Child bounds remain inside parent bounds
+    // 2. No child overlaps (pairwise empty interior intersections)
+    // 3. No child gaps (exact area conservation)
+    // 4. Correct refinement depth tracking (depth 0 -> 1 -> 2 -> 3)
+    // 5. Deterministic subdivision
+    {
+        std::cout << "  testing Quadtree mathematical containment, no-overlap, no-gap invariants...\n";
+        ps26053::BoundingBox2D root_bounds{10.0f, 10.50f, -5.0f, -4.50f};
+        ps26053::Quadtree q(root_bounds, 0.50f, 3);
+        
+        auto initial_leaves = q.getActiveCells();
+        assert(initial_leaves.size() == 1);
+        assert(initial_leaves[0]->depth == 0);
+        assert(initial_leaves[0]->resolution == 0.50f);
+
+        // Subdivide Level 1
+        q.refineCellAt(10.1f, -4.9f);
+        auto level1_leaves = q.getActiveCells();
+        assert(level1_leaves.size() == 4);
+
+        float parent_area = root_bounds.width() * root_bounds.height();
+        float sum_area = 0.0f;
+        for (size_t i = 0; i < level1_leaves.size(); ++i) {
+            const auto* c1 = level1_leaves[i];
+            assert(c1->depth == 1);
+            assert(std::abs(c1->resolution - 0.25f) < 1e-6f);
+            // Inside parent bounds
+            assert(c1->bounds.min_x >= root_bounds.min_x - 1e-6f);
+            assert(c1->bounds.max_x <= root_bounds.max_x + 1e-6f);
+            assert(c1->bounds.min_y >= root_bounds.min_y - 1e-6f);
+            assert(c1->bounds.max_y <= root_bounds.max_y + 1e-6f);
+            sum_area += c1->bounds.width() * c1->bounds.height();
+
+            // Pairwise no overlap
+            for (size_t j = i + 1; j < level1_leaves.size(); ++j) {
+                const auto* c2 = level1_leaves[j];
+                bool overlap = (c1->bounds.min_x < c2->bounds.max_x - 1e-5f &&
+                                c2->bounds.min_x < c1->bounds.max_x - 1e-5f &&
+                                c1->bounds.min_y < c2->bounds.max_y - 1e-5f &&
+                                c2->bounds.min_y < c1->bounds.max_y - 1e-5f);
+                assert(!overlap);
+            }
+        }
+        // Zero gaps
+        assert(std::abs(sum_area - parent_area) < 1e-5f);
+
+        // Subdivide Level 2 (one quadrant refined)
+        q.refineCellAt(10.1f, -4.9f);
+        auto level2_leaves = q.getActiveCells();
+        assert(level2_leaves.size() == 7);
+        float sum_area2 = 0.0f;
+        for (const auto* c : level2_leaves) {
+            sum_area2 += c->bounds.width() * c->bounds.height();
+            assert(c->depth >= 1 && c->depth <= 2);
+        }
+        assert(std::abs(sum_area2 - parent_area) < 1e-5f);
     }
 
     std::cout << "[Test PASS] test_quadtree succeeded!\n";

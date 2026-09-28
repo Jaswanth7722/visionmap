@@ -145,7 +145,7 @@ cmake --build build --parallel 4
 
 ---
 
-## 4. Running the C++ Applications
+## 4. Running the C++ Applications`
 
 ### A. Run Main LiDAR Mapper
 Runs full ingestion, PointNet++ C++ inference, Kalman tracking, and 2.5D world model generation:

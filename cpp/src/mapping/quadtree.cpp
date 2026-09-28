@@ -6,6 +6,7 @@ QuadtreeNode::QuadtreeNode(const BoundingBox2D& bounds, float resolution, int de
     : bounds_(bounds), depth_(depth) {
     cell_.bounds = bounds;
     cell_.resolution = resolution;
+    cell_.depth = depth;
 }
 
 int QuadtreeNode::getChildIndex(float x, float y) const {

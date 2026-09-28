@@ -93,6 +93,66 @@ int main() {
         assert(g3.checkBoundaryAlignment().totalErrors() == 0);
     }
 
+    // Explicit boundary transition testing across all critical thresholds:
+    // 9.999m, 10.000m, 10.001m
+    // 29.999m, 30.000m, 30.001m
+    // 59.999m, 60.000m, 60.001m
+    // 99.999m, 100.000m, 100.001m
+    // Testing both positive and negative coordinate axes.
+    {
+        std::cout << "  testing exact boundary thresholds (9.999m, 10m, 10.001m, etc.)...\n";
+        assert(policy.getBaseResolution(9.999f) == 0.05f);
+        assert(policy.getBaseResolution(10.000f) == 0.05f);
+        assert(policy.getBaseResolution(10.001f) == 0.15f);
+
+        assert(policy.getBaseResolution(29.999f) == 0.15f);
+        assert(policy.getBaseResolution(30.000f) == 0.15f);
+        assert(policy.getBaseResolution(30.001f) == 0.30f);
+
+        assert(policy.getBaseResolution(59.999f) == 0.30f);
+        assert(policy.getBaseResolution(60.000f) == 0.30f);
+        assert(policy.getBaseResolution(60.001f) == 0.50f);
+
+        assert(policy.getBaseResolution(99.999f) == 0.50f);
+        assert(policy.getBaseResolution(100.000f) == 0.50f);
+        assert(policy.getBaseResolution(100.001f) == 0.50f); // clamped to horizon band
+
+        // Point cloud with points positioned precisely at boundary limits in +X, -X, +Y, -Y
+        ps26053::Grid25D boundary_grid;
+        ps26053::PointCloud b_cloud;
+        std::vector<float> test_radii = {
+            9.999f, 10.000f, 10.001f,
+            29.999f, 30.000f, 30.001f,
+            59.999f, 60.000f, 60.001f
+        };
+
+        for (float r : test_radii) {
+            // Positive X
+            b_cloud.push_back(makePt(r, 0.0f, -1.0f, ps26053::SemanticClass::TERRAIN));
+            // Negative X
+            b_cloud.push_back(makePt(-r, 0.0f, -1.0f, ps26053::SemanticClass::TERRAIN));
+            // Positive Y
+            b_cloud.push_back(makePt(0.0f, r, -1.0f, ps26053::SemanticClass::STATIC_OBSTACLE));
+            // Negative Y
+            b_cloud.push_back(makePt(0.0f, -r, -1.0f, ps26053::SemanticClass::DYNAMIC_OBSTACLE));
+            // Diagonal (+X, +Y) and (-X, -Y)
+            float diag = r * 0.70710678f;
+            b_cloud.push_back(makePt(diag, diag, -1.0f, ps26053::SemanticClass::TERRAIN));
+            b_cloud.push_back(makePt(-diag, -diag, -1.0f, ps26053::SemanticClass::TERRAIN));
+        }
+
+        boundary_grid.updateWithPointCloud(b_cloud, 0.0);
+        ps26053::BoundaryQA b_qa = boundary_grid.checkBoundaryAlignment();
+        std::cout << "  boundary threshold points: " << b_cloud.size()
+                  << ", cells: " << b_qa.checked_cells
+                  << ", overlaps: " << b_qa.overlapping_quanta
+                  << ", misaligned: " << b_qa.misaligned_cells << "\n";
+        assert(b_qa.checked_cells > 0);
+        assert(b_qa.overlapping_quanta == 0);
+        assert(b_qa.misaligned_cells == 0);
+        assert(b_qa.totalErrors() == 0);
+    }
+
     std::cout << "[Test PASS] test_boundary_alignment succeeded!\n";
     return 0;
 }

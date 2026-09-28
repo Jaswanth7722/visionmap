@@ -1,11 +1,38 @@
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
+// Cross-platform HTTP server for the PS 26053 Live Dashboard.
+// Supports macOS, Linux, and Windows (via POSIX-compatible Winsock2 shim).
 
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <psapi.h>
+#ifdef _WIN32
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  #include <psapi.h>
+  #pragma comment(lib, "ws2_32.lib")
+  #pragma comment(lib, "psapi.lib")
+  using socket_t = SOCKET;
+  static constexpr socket_t INVALID_SOCK = INVALID_SOCKET;
+  #define CLOSE_SOCKET(s) closesocket(s)
+  #define SOCK_ERROR      SOCKET_ERROR
+  inline int sock_errno() { return WSAGetLastError(); }
+#else
+  #include <sys/types.h>
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <arpa/inet.h>
+  #include <unistd.h>
+  #include <signal.h>
+  #include <sys/select.h>
+  #if defined(__APPLE__)
+    #include <mach/mach.h>
+  #endif
+  using socket_t = int;
+  static constexpr socket_t INVALID_SOCK = -1;
+  #define CLOSE_SOCKET(s) ::close(s)
+  #define SOCK_ERROR      (-1)
+  #include <cerrno>
+  inline int sock_errno() { return errno; }
+#endif
 
 #include "ps26053/io/lidar_io.hpp"
 #include "ps26053/runtime/pipeline.hpp"
@@ -24,27 +51,51 @@
 #include <iomanip>
 #include <climits>
 #include <cmath>
+#include <cerrno>
 #include <filesystem>
+#include <algorithm>
+#include <csignal>
 
 namespace {
 
 static std::atomic<bool> g_running{true};
 
-BOOL WINAPI ConsoleHandler(DWORD signal) {
-    if (signal == CTRL_C_EVENT || signal == CTRL_CLOSE_EVENT) {
-        std::cout << "\n[Server] Shutting down C++ Live Dashboard Server...\n";
-        g_running = false;
-        return TRUE;
-    }
-    return FALSE;
+#ifndef _WIN32
+void handleSignal(int /*sig*/) {
+    std::cout << "\n[Server] Shutting down C++ Live Dashboard Server...\n";
+    g_running = false;
 }
+#endif
 
 double getProcessRamMb() {
-    PROCESS_MEMORY_COUNTERS_EX pmc;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS_EX pmc{};
+    if (GetProcessMemoryInfo(GetCurrentProcess(),
+                             reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc),
+                             sizeof(pmc))) {
         return static_cast<double>(pmc.WorkingSetSize) / (1024.0 * 1024.0);
     }
     return 0.0;
+#elif defined(__APPLE__)
+    struct mach_task_basic_info info{};
+    mach_msg_type_number_t infoCount = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+                  reinterpret_cast<task_info_t>(&info), &infoCount) == KERN_SUCCESS) {
+        return static_cast<double>(info.resident_size) / (1024.0 * 1024.0);
+    }
+    return 0.0;
+#else
+    std::ifstream f("/proc/self/status");
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.rfind("VmRSS:", 0) == 0) {
+            std::istringstream ss(line.substr(6));
+            double kb = 0; ss >> kb;
+            return kb / 1024.0;
+        }
+    }
+    return 0.0;
+#endif
 }
 
 std::string readFileContents(const std::string& path) {
@@ -78,15 +129,21 @@ public:
     }
 
     bool start() {
-        // 1. Initialize Winsock
+#ifdef _WIN32
         WSADATA wsaData;
         int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
         if (iResult != 0) {
             std::cerr << "[Error] WSAStartup failed: " << iResult << "\n";
             return false;
         }
+#else
+        // Ignore SIGPIPE so broken connections don't kill the process.
+        ::signal(SIGPIPE, SIG_IGN);
+        ::signal(SIGINT,  handleSignal);
+        ::signal(SIGTERM, handleSignal);
+#endif
 
-        // 2. Pre-initialize native C++ perception pipeline
+        // Pre-initialize native C++ perception pipeline
         std::cout << "[Pipeline] Initializing PointNet++ ONNX runtime in C++...\n";
         if (!pipeline_->initialize()) {
             std::cerr << "[Warn] Could not load ONNX model; running in heuristic perception mode.\n";
@@ -100,39 +157,45 @@ public:
         for (const auto& p : seq_scans_) known_scans_.insert(p);
         std::cout << "[Dataset] " << seq_scans_.size() << " LiDAR scan(s) from: " << scan_arg_ << " ...\n";
         seq_index_ = 0;
-        if (processFrameAt(0)) {
-            scan_processed_ = true;
-        }
+        if (processFrameAt(0)) scan_processed_ = true;
 
-        // 3. Create server socket
-        listen_socket_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (listen_socket_ == INVALID_SOCKET) {
-            std::cerr << "[Error] Socket creation failed: " << WSAGetLastError() << "\n";
+        // Create server socket
+        listen_socket_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (listen_socket_ == INVALID_SOCK) {
+            std::cerr << "[Error] Socket creation failed: " << sock_errno() << "\n";
+#ifdef _WIN32
             WSACleanup();
+#endif
             return false;
         }
 
-        // Set SO_REUSEADDR
         int opt = 1;
-        setsockopt(listen_socket_, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+#ifdef _WIN32
+        setsockopt(listen_socket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
+#else
+        setsockopt(listen_socket_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#endif
 
-        // Bind
-        sockaddr_in server_addr;
-        server_addr.sin_family = AF_INET;
+        sockaddr_in server_addr{};
+        server_addr.sin_family      = AF_INET;
         server_addr.sin_addr.s_addr = INADDR_ANY;
-        server_addr.sin_port = htons(static_cast<u_short>(port_));
+        server_addr.sin_port        = htons(static_cast<uint16_t>(port_));
 
-        if (bind(listen_socket_, (sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
-            std::cerr << "[Error] Bind failed on port " << port_ << ": " << WSAGetLastError() << "\n";
-            closesocket(listen_socket_);
+        if (::bind(listen_socket_, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) == SOCK_ERROR) {
+            std::cerr << "[Error] Bind failed on port " << port_ << ": " << sock_errno() << "\n";
+            CLOSE_SOCKET(listen_socket_);
+#ifdef _WIN32
             WSACleanup();
+#endif
             return false;
         }
 
-        if (listen(listen_socket_, SOMAXCONN) == SOCKET_ERROR) {
-            std::cerr << "[Error] Listen failed: " << WSAGetLastError() << "\n";
-            closesocket(listen_socket_);
+        if (::listen(listen_socket_, SOMAXCONN) == SOCK_ERROR) {
+            std::cerr << "[Error] Listen failed: " << sock_errno() << "\n";
+            CLOSE_SOCKET(listen_socket_);
+#ifdef _WIN32
             WSACleanup();
+#endif
             return false;
         }
 
@@ -152,22 +215,31 @@ public:
             startWatchThread();
         }
 
-        // Listen loop
+        // Accept loop
         while (g_running) {
             fd_set read_fds;
             FD_ZERO(&read_fds);
             FD_SET(listen_socket_, &read_fds);
 
             timeval timeout{};
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 200000; // 200ms timeout for non-blocking shutdown check
+            timeout.tv_sec  = 0;
+            timeout.tv_usec = 200000; // 200 ms — allows periodic shutdown check
 
-            int activity = select(0, &read_fds, nullptr, nullptr, &timeout);
+#ifdef _WIN32
+            int activity = ::select(0, &read_fds, nullptr, nullptr, &timeout);
+#else
+            int activity = ::select(static_cast<int>(listen_socket_) + 1, &read_fds, nullptr, nullptr, &timeout);
+#endif
             if (activity > 0 && FD_ISSET(listen_socket_, &read_fds)) {
-                sockaddr_in client_addr;
+                sockaddr_in client_addr{};
+#ifdef _WIN32
                 int client_len = sizeof(client_addr);
-                SOCKET client_socket = accept(listen_socket_, (sockaddr*)&client_addr, &client_len);
-                if (client_socket != INVALID_SOCKET) {
+#else
+                socklen_t client_len = sizeof(client_addr);
+#endif
+                socket_t client_socket = ::accept(listen_socket_,
+                    reinterpret_cast<sockaddr*>(&client_addr), &client_len);
+                if (client_socket != INVALID_SOCK) {
                     char ip_buf[INET_ADDRSTRLEN] = {0};
                     inet_ntop(AF_INET, &(client_addr.sin_addr), ip_buf, INET_ADDRSTRLEN);
                     std::string client_ip(ip_buf);
@@ -176,14 +248,16 @@ public:
             }
         }
 
-        closesocket(listen_socket_);
+        CLOSE_SOCKET(listen_socket_);
+#ifdef _WIN32
         WSACleanup();
+#endif
         return true;
     }
 
 private:
     int port_{8080};
-    SOCKET listen_socket_{INVALID_SOCKET};
+    socket_t listen_socket_{INVALID_SOCK};
     std::unique_ptr<ps26053::MappingPipeline> pipeline_;
     ps26053::PointCloud raw_scan_;
     ps26053::FrameMetrics latest_metrics_;
@@ -203,16 +277,19 @@ private:
     double loop_time_offset_{0.0};
     std::set<std::string> known_scans_;
 
-    void handleClient(SOCKET sock, const std::string& client_ip) {
+    void handleClient(socket_t sock, const std::string& client_ip) {
         std::vector<char> buf(16384);
         std::string request;
         size_t content_length = 0;
         size_t header_end = std::string::npos;
         bool headers_parsed = false;
 
-        // Loop to receive complete HTTP headers and body
         while (true) {
-            int n = recv(sock, buf.data(), static_cast<int>(buf.size()), 0);
+#ifdef _WIN32
+            int n = ::recv(sock, buf.data(), static_cast<int>(buf.size()), 0);
+#else
+            ssize_t n = ::recv(sock, buf.data(), buf.size(), 0);
+#endif
             if (n <= 0) break;
             request.append(buf.data(), n);
 
@@ -248,7 +325,7 @@ private:
         }
 
         if (request.empty()) {
-            closesocket(sock);
+            CLOSE_SOCKET(sock);
             return;
         }
 
@@ -286,6 +363,8 @@ private:
             serveApiReset(sock);
         } else if (method == "GET" && (pure_path == "/api/ply" || pure_path == "/api/ply/export")) {
             serveApiPly(sock);
+        } else if (method == "GET" && pure_path == "/api/benchmark") {
+            serveApiBenchmark(sock);
         } else if (method == "GET" && pure_path.rfind("/vendor/", 0) == 0) {
             serveVendorFile(sock, pure_path);
         } else if (method == "OPTIONS") {
@@ -294,10 +373,10 @@ private:
             sendResponse(sock, 404, "text/plain", "404 Not Found");
         }
 
-        closesocket(sock);
+        CLOSE_SOCKET(sock);
     }
 
-    void serveIndexHtml(SOCKET sock) {
+    void serveIndexHtml(socket_t sock) {
         std::string html = readFileContents("cpp/web/index.html");
         if (html.empty()) {
             html = "<html><body><h2>PS 26053 C++ Server Running</h2><p>Please place index.html in cpp/web/index.html.</p></body></html>";
@@ -305,7 +384,7 @@ private:
         sendResponse(sock, 200, "text/html; charset=utf-8", html);
     }
 
-    void serveVendorFile(SOCKET sock, const std::string& pure_path) {
+    void serveVendorFile(socket_t sock, const std::string& pure_path) {
         std::string name = pure_path.substr(std::string("/vendor/").size());
         if (name.empty() || name.find("..") != std::string::npos ||
             name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
@@ -326,7 +405,7 @@ private:
         sendResponse(sock, 200, content_type, body);
     }
 
-    void serveApiStatus(SOCKET sock) {
+    void serveApiStatus(socket_t sock) {
         double ram_mb = getProcessRamMb();
 
         size_t active_pts = 0;
@@ -380,7 +459,7 @@ private:
         sendResponse(sock, 200, "application/json", ss.str());
     }
 
-    void serveApiLidarScan(SOCKET sock) {
+    void serveApiLidarScan(socket_t sock) {
         std::lock_guard<std::mutex> lock(mtx_);
         if (!scan_processed_ && !raw_scan_.empty()) {
             latest_metrics_ = pipeline_->processFrame(raw_scan_, 0.0, 0);
@@ -462,10 +541,17 @@ private:
             first_cell = false;
             float cx = (c.bounds.min_x + c.bounds.max_x) * 0.5f;
             float cy = (c.bounds.min_y + c.bounds.max_y) * 0.5f;
+            float dist = std::sqrt(cx * cx + cy * cy);
+            float cell_w = c.bounds.max_x - c.bounds.min_x;
+            float cell_h = c.bounds.max_y - c.bounds.min_y;
             ss << "    {\"x\":" << cx << ",\"y\":" << cy << ",\"res\":" << c.resolution
+               << ",\"depth\":" << c.depth
+               << ",\"dist\":" << dist
+               << ",\"w\":" << cell_w << ",\"h\":" << cell_h
                << ",\"elev\":" << c.elevation << ",\"occ\":" << c.occupancy
                << ",\"class\":" << static_cast<int>(c.semantic_class)
                << ",\"conf\":" << c.semantic_confidence
+               << ",\"pc\":" << c.point_count
                << ",\"object_id\":" << c.object_id
                << ",\"vx\":" << c.velocity_x << ",\"vy\":" << c.velocity_y << "}";
         }
@@ -487,6 +573,118 @@ private:
         }
         ss << "\n  ]\n";
         ss << "}";
+
+        sendResponse(sock, 200, "application/json", ss.str());
+    }
+
+    // Benchmark endpoint: returns per-band live cell counts, memory, latency vs Uniform baseline.
+    void serveApiBenchmark(socket_t sock) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        const auto& grid = pipeline_->getGrid();
+        auto all_cells = grid.getAllCells();
+
+        // Resolution band thresholds (must match ResolutionPolicy)
+        struct Band { float res_cm; float r_min; float r_max; const char* label; };
+        const Band BANDS[] = {
+            { 5.0f,  0.0f,  10.0f, "0–10 m  (5 cm)" },
+            {15.0f, 10.0f,  30.0f, "10–30 m (15 cm)"},
+            {30.0f, 30.0f,  60.0f, "30–60 m (30 cm)"},
+            {50.0f, 60.0f, 100.0f, "60–100 m(50 cm)"},
+        };
+        const int NB = 4;
+        size_t band_cells[4] = {0,0,0,0};
+        size_t uniform_cells[4] = {0,0,0,0};
+
+        for (const auto& c : all_cells) {
+            float cx = (c.bounds.min_x + c.bounds.max_x) * 0.5f;
+            float cy = (c.bounds.min_y + c.bounds.max_y) * 0.5f;
+            float dist = std::sqrt(cx*cx + cy*cy);
+            for (int b = 0; b < NB; ++b) {
+                if (dist >= BANDS[b].r_min && dist < BANDS[b].r_max) {
+                    band_cells[b]++;
+                    // Uniform: if everything were at finest 5 cm resolution
+                    float side = BANDS[b].r_max - BANDS[b].r_min;
+                    float arc  = BANDS[b].r_max + BANDS[b].r_min;
+                    float area_per_cell = BANDS[b].res_cm * BANDS[b].res_cm * 1e-4f;
+                    // just count how many 5cm cells would fit this band sector
+                    // (uniform estimate: same area, all at 5cm)
+                    break;
+                }
+            }
+        }
+
+        // Compute uniform baseline: how many 5cm cells in each ring annulus
+        const float RES_FINE_M = 0.05f;
+        for (int b = 0; b < NB; ++b) {
+            float area = 3.14159f * (BANDS[b].r_max * BANDS[b].r_max -
+                                     BANDS[b].r_min * BANDS[b].r_min);
+            uniform_cells[b] = static_cast<size_t>(area / (RES_FINE_M * RES_FINE_M));
+        }
+
+        size_t total_adaptive = 0, total_uniform = 0;
+        for (int b = 0; b < NB; ++b) {
+            total_adaptive += band_cells[b];
+            total_uniform  += uniform_cells[b];
+        }
+
+        // Memory: each adaptive cell is roughly sizeof(Cell2D) ≈ 48 bytes
+        constexpr size_t CELL_BYTES = 64; // Cell2D footprint with alignment
+        double mem_adaptive_mb = (total_adaptive * CELL_BYTES) / (1024.0 * 1024.0);
+        double mem_uniform_mb  = (total_uniform  * CELL_BYTES) / (1024.0 * 1024.0);
+
+        double map_ms = latest_metrics_.mapping_time_ms;
+        double fps    = latest_metrics_.fps;
+        auto b_errors = grid.checkBoundaryAlignment().totalErrors();
+
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(2);
+        ss << "{\n";
+        ss << "  \"adaptive\": {\n";
+        ss << "    \"total_cells\": " << total_adaptive << ",\n";
+        ss << "    \"mem_mb\": " << mem_adaptive_mb << ",\n";
+        ss << "    \"map_ms\": " << map_ms << ",\n";
+        ss << "    \"fps\": " << fps << ",\n";
+        ss << "    \"boundary_errors\": " << b_errors << ",\n";
+        ss << "    \"bands\": [\n";
+        for (int b = 0; b < NB; ++b) {
+            ss << "      {\"label\":\"" << BANDS[b].label << "\","
+               << "\"cells\":" << band_cells[b] << ","
+               << "\"res_cm\":" << BANDS[b].res_cm << "}";
+            if (b < NB - 1) ss << ",";
+            ss << "\n";
+        }
+        ss << "    ]\n";
+        ss << "  },\n";
+        ss << "  \"uniform\": {\n";
+        ss << "    \"total_cells\": " << total_uniform << ",\n";
+        ss << "    \"mem_mb\": " << mem_uniform_mb << ",\n";
+        ss << "    \"bands\": [\n";
+        for (int b = 0; b < NB; ++b) {
+            ss << "      {\"label\":\"" << BANDS[b].label << "\","
+               << "\"cells\":" << uniform_cells[b] << ","
+               << "\"res_cm\":" << 5.0f << "}";
+            if (b < NB - 1) ss << ",";
+            ss << "\n";
+        }
+        ss << "    ]\n";
+        ss << "  },\n";
+        ss << "  \"cell_reduction_pct\": ";
+        if (total_uniform > 0) {
+            double red = 100.0 * (1.0 - static_cast<double>(total_adaptive) /
+                                              static_cast<double>(total_uniform));
+            ss << red;
+        } else {
+            ss << 0.0;
+        }
+        ss << ",\n";
+        ss << "  \"mem_reduction_pct\": ";
+        if (mem_uniform_mb > 0.0) {
+            double red = 100.0 * (1.0 - mem_adaptive_mb / mem_uniform_mb);
+            ss << red;
+        } else {
+            ss << 0.0;
+        }
+        ss << "\n}";
 
         sendResponse(sock, 200, "application/json", ss.str());
     }
@@ -548,7 +746,7 @@ private:
         }).detach();
     }
 
-    void serveApiFrames(SOCKET sock) {
+    void serveApiFrames(socket_t sock) {
         std::lock_guard<std::mutex> lock(mtx_);
         std::ostringstream ss;
         ss << "{\n";
@@ -571,7 +769,7 @@ private:
         sendResponse(sock, 200, "application/json", ss.str());
     }
 
-    void serveApiFrameNext(SOCKET sock) {
+    void serveApiFrameNext(socket_t sock) {
         std::lock_guard<std::mutex> lock(mtx_);
         std::ostringstream ss;
         ss << std::fixed << std::setprecision(2);
@@ -607,7 +805,7 @@ private:
         sendResponse(sock, 200, "application/json", ss.str());
     }
 
-    void serveApiFramePrev(SOCKET sock) {
+    void serveApiFramePrev(socket_t sock) {
         std::lock_guard<std::mutex> lock(mtx_);
         std::ostringstream ss;
         ss << std::fixed << std::setprecision(2);
@@ -629,7 +827,7 @@ private:
         sendResponse(sock, 200, "application/json", ss.str());
     }
 
-    void serveApiFrameSelect(SOCKET sock, const std::string& query, const std::string& body) {
+    void serveApiFrameSelect(socket_t sock, const std::string& query, const std::string& body) {
         size_t target_idx = 0;
         bool found_idx = false;
 
@@ -685,7 +883,7 @@ private:
     //   2. Appended to the live sequence (seq_scans_)
     //   3. Processed immediately as the next frame
     //   4. Returned as a normal /api/lidar/scan JSON response
-    void serveApiLidarUpload(SOCKET sock, const std::string& request,
+    void serveApiLidarUpload(socket_t sock, const std::string& request,
                              size_t header_end, const std::string& query_str) {
         // Extract filename hint from query string
         std::string filename_hint = "uploaded.bin";
@@ -827,7 +1025,7 @@ private:
         sendResponse(sock, 200, "application/json", ss.str());
     }
 
-    void serveApiReset(SOCKET sock) {
+    void serveApiReset(socket_t sock) {
         std::lock_guard<std::mutex> lock(mtx_);
         // Reinitialize pipeline state — MappingPipeline has no reset() method;
         // reconstruct it from the same model path and re-run initialize().
@@ -844,7 +1042,7 @@ private:
         sendResponse(sock, 200, "application/json", "{\"status\":\"ok\",\"message\":\"Pipeline reset to frame 0\"}");
     }
 
-    void serveApiPly(SOCKET sock) {
+    void serveApiPly(socket_t sock) {
         std::lock_guard<std::mutex> lock(mtx_);
         // Build zero-padded filename using snprintf to avoid char* concat errors.
         char fname_buf[64];
@@ -860,7 +1058,7 @@ private:
         sendResponse(sock, 200, "application/x-ply", ply_data);
     }
 
-    void serveCorsPreflight(SOCKET sock) {
+    void serveCorsPreflight(socket_t sock) {
         std::ostringstream ss;
         ss << "HTTP/1.1 204 No Content\r\n";
         ss << "Access-Control-Allow-Origin: *\r\n";
@@ -871,7 +1069,7 @@ private:
         send(sock, res.c_str(), static_cast<int>(res.size()), 0);
     }
 
-    void sendResponse(SOCKET sock, int status_code, const std::string& content_type, const std::string& body) {
+    void sendResponse(socket_t sock, int status_code, const std::string& content_type, const std::string& body) {
         std::ostringstream ss;
         std::string status_msg = (status_code == 200) ? "OK" : (status_code == 404 ? "Not Found" : "Error");
         ss << "HTTP/1.1 " << status_code << " " << status_msg << "\r\n";
@@ -889,7 +1087,7 @@ private:
             int n = send(sock, resp.c_str() + sent_total, chunk, 0);
             if (n <= 0) {
                 std::cerr << "[Server] send() failed after " << sent_total << " of "
-                          << resp.size() << " bytes (WSA " << WSAGetLastError() << ").\n";
+                          << resp.size() << " bytes (errno " << sock_errno() << ").\n";
                 return;
             }
             sent_total += static_cast<size_t>(n);
@@ -898,9 +1096,19 @@ private:
 };
 
 int main(int argc, char** argv) {
-    setvbuf(stdout, nullptr, _IONBF, 0);
-    setvbuf(stderr, nullptr, _IONBF, 0);
-    SetConsoleCtrlHandler(ConsoleHandler, TRUE);
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+#ifdef _WIN32
+    SetConsoleCtrlHandler([](DWORD sig) -> BOOL {
+        if (sig == CTRL_C_EVENT || sig == CTRL_CLOSE_EVENT) {
+            std::cout << "\n[Server] Shutting down C++ Live Dashboard Server...\n";
+            g_running = false;
+            return TRUE;
+        }
+        return FALSE;
+    }, TRUE);
+#endif
+    // POSIX signals (SIGINT/SIGTERM) are registered inside start() on non-Windows.
 
     int port = 8080;
     std::string scan_arg = "data/raw/sequences/00/velodyne";

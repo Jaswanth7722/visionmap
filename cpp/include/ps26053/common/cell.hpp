@@ -27,6 +27,7 @@ struct Cell {
     float velocity_x{0.0f};     ///< Estimated velocity in m/s
     float velocity_y{0.0f};
     float importance{0.0f};     ///< Evaluated Level-2 importance score [0.0, 1.0]
+    int depth{0};               ///< Quadtree refinement depth (0 = base band cell, 1..max_depth = refined)
     double timestamp{0.0};      ///< Timestamp of last update
     uint32_t point_count{0};    ///< Number of LiDAR points contributing to this cell
 
@@ -106,6 +107,7 @@ struct Cell {
             children[i].velocity_x = velocity_x;
             children[i].velocity_y = velocity_y;
             children[i].importance = importance;
+            children[i].depth = depth + 1;
             children[i].timestamp = timestamp;
             children[i].point_count = base_share + (static_cast<uint32_t>(i) < remainder ? 1u : 0u);
         }

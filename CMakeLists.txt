@@ -115,7 +115,11 @@ target_link_libraries(benchmark PRIVATE ps26053_core)
 copy_onnx_dll(benchmark)
 
 add_executable(live_dashboard_server cpp/apps/live_dashboard_server.cpp)
-target_link_libraries(live_dashboard_server PRIVATE ps26053_core ws2_32 psapi)
+if(WIN32)
+    target_link_libraries(live_dashboard_server PRIVATE ps26053_core ws2_32 psapi)
+else()
+    target_link_libraries(live_dashboard_server PRIVATE ps26053_core)
+endif()
 copy_onnx_dll(live_dashboard_server)
 
 # -----------------------------------------------------------------------------

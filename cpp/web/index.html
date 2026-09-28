@@ -917,6 +917,64 @@
         .term-log.ok { color: var(--emerald); font-weight: 600; }
         .term-log.warn { color: var(--amber); font-weight: 600; }
         .term-log.info { color: var(--primary); font-weight: 600; }
+
+        /* ── Benchmark Panel ──────────────────────────────────────────────── */
+        .bm-stat-card {
+            background: var(--bg-inset);
+            border: 1px solid var(--border-dim);
+            border-radius: 6px;
+            padding: 5px 8px;
+        }
+        .bm-stat-key {
+            font-size: 8px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 2px;
+        }
+        .bm-stat-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .bm-pill {
+            font-size: 9px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 3px 8px;
+            border-radius: 20px;
+            white-space: nowrap;
+            flex: 1;
+            text-align: center;
+        }
+        .bm-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8.5px;
+        }
+        .bm-table th {
+            background: var(--bg-inset);
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 7.5px;
+            letter-spacing: 0.3px;
+            padding: 4px 6px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-dim);
+            position: sticky;
+            top: 0;
+        }
+        .bm-table td {
+            padding: 3px 6px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+        }
+        .bm-table tr:hover td {
+            background: var(--bg-panel-hover);
+        }
     </style>
 </head>
 <body>
@@ -1097,8 +1155,14 @@
                 <div id="threeContainer"></div>
 
                 <!-- 2.5D Canvas Container -->
-                <div id="gridContainer">
+                <div id="gridContainer" style="position:relative;">
                     <canvas id="gridCanvas"></canvas>
+                    <!-- Hover Tooltip for Cell Metadata Inspection -->
+                    <div id="bevCellTooltip" style="display:none; position:absolute; pointer-events:none;
+                         background:rgba(6,9,14,0.94); color:#f1f5f9; border:1px solid rgba(56,189,248,0.4);
+                         border-radius:8px; padding:9px 11px; font-family:'JetBrains Mono',monospace;
+                         font-size:8.5px; line-height:1.7; z-index:100; min-width:170px;
+                         box-shadow:0 4px 18px rgba(0,0,0,0.45);"></div>
                 </div>
 
                 <!-- HUD Overlays (Top Status Bar) -->
@@ -1316,8 +1380,76 @@
                     </div>
                 </div>
 
+                <!-- Adaptive vs Uniform Benchmark Panel -->
+                <div style="border-top:1px solid var(--border-dim); padding-top:10px;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-main); text-transform:uppercase; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>⚡ Adaptive vs Uniform Benchmark</span>
+                        <span style="font-size:8px; color:var(--text-muted); font-family:'JetBrains Mono'; font-weight:400;">Live · /api/benchmark</span>
+                    </div>
+
+                    <!-- Summary Totals -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-bottom:6px;">
+                        <div class="bm-stat-card" style="border-left:3px solid var(--emerald);">
+                            <div class="bm-stat-key">Adaptive Cells</div>
+                            <div class="bm-stat-val" id="bm_adapt_cells" style="color:var(--emerald);">—</div>
+                        </div>
+                        <div class="bm-stat-card" style="border-left:3px solid #64748b;">
+                            <div class="bm-stat-key">Uniform Cells</div>
+                            <div class="bm-stat-val" id="bm_unif_cells" style="color:#94a3b8;">—</div>
+                        </div>
+                        <div class="bm-stat-card" style="border-left:3px solid var(--emerald);">
+                            <div class="bm-stat-key">Adaptive Mem</div>
+                            <div class="bm-stat-val" id="bm_adapt_mem" style="color:var(--emerald);">—</div>
+                        </div>
+                        <div class="bm-stat-card" style="border-left:3px solid #64748b;">
+                            <div class="bm-stat-key">Uniform Mem</div>
+                            <div class="bm-stat-val" id="bm_unif_mem" style="color:#94a3b8;">—</div>
+                        </div>
+                    </div>
+
+                    <!-- Reduction highlights -->
+                    <div style="display:flex; gap:6px; margin-bottom:6px;">
+                        <div class="bm-pill" style="background:var(--emerald-light);color:var(--emerald);">
+                            Cell Reduction: <strong id="bm_reduction_cells">—</strong>
+                        </div>
+                        <div class="bm-pill" style="background:var(--emerald-light);color:var(--emerald);">
+                            Mem Reduction: <strong id="bm_reduction_mem">—</strong>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:6px; margin-bottom:8px;">
+                        <div class="bm-pill" style="background:var(--primary-light);color:var(--primary);">
+                            Map Latency: <strong id="bm_adapt_latency">—</strong>
+                        </div>
+                        <div class="bm-pill" style="background:var(--primary-light);color:var(--primary);">
+                            FPS: <strong id="bm_adapt_fps">—</strong>
+                        </div>
+                    </div>
+
+                    <!-- Per-band table -->
+                    <div style="overflow-x:auto; max-height:130px; overflow-y:auto;">
+                        <table class="bm-table">
+                            <thead>
+                                <tr>
+                                    <th>Band</th>
+                                    <th>Adpt Cells</th>
+                                    <th>Unif Cells</th>
+                                    <th>Adpt Res</th>
+                                    <th>Unif Res</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bmBandBody">
+                                <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:8px 0;">Fetching benchmark...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="metric-row" style="margin-top:6px;">
+                        <span class="metric-key">Boundary Gaps (Adaptive)</span>
+                        <span class="metric-val" id="bm_adapt_berr" style="color:var(--emerald);">0 gaps</span>
+                    </div>
+                </div>
+
                 <!-- Console Log -->
-                <div style="border-top:1px solid var(--border-dim); padding-top:10px; flex:1; display:flex; flex-direction:column;">
+                <div style="border-top:1px solid var(--border-dim); padding-top:10px;">
                     <div style="font-size:10px; font-weight:700; color:var(--text-main); text-transform:uppercase; margin-bottom:4px;">
                         Runtime Log
                     </div>
@@ -1970,34 +2102,64 @@
 
             const cx = w / 2;
             const cy = h / 2 + 30;
-            const maxRange = 60.0; // Metres
+            const maxRange = 100.0;
             const scale = Math.min(w, h) / (maxRange * 2.2);
 
-            // Concentric Range Rings
-            ctx.lineWidth = 1;
-            [10, 20, 30, 40, 50, 60].forEach(r => {
-                const rad = r * scale;
-                ctx.strokeStyle = (r === 30 || r === 60) ? 
-                    (isDarkMode ? 'rgba(0, 243, 255, 0.25)' : 'rgba(37, 99, 235, 0.35)') : 
-                    (isDarkMode ? 'rgba(56, 189, 248, 0.1)' : 'rgba(203, 213, 225, 0.7)');
-                ctx.beginPath();
-                ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-                ctx.stroke();
+            // ── Resolution Band Annuli (colour-coded like a fovea) ──────────────
+            // Band fills: innermost = green (5 cm), then blue (15 cm), orange (30 cm), purple (50 cm)
+            const BANDS = [
+                { r_min: 0,  r_max: 10,  res: '5 cm',  fill: isDarkMode ? 'rgba(16,185,129,0.12)'  : 'rgba(16,185,129,0.08)',  stroke: isDarkMode ? 'rgba(16,185,129,0.55)' : 'rgba(5,150,105,0.6)',  label: '0–10 m\n5 cm' },
+                { r_min: 10, r_max: 30,  res: '15 cm', fill: isDarkMode ? 'rgba(37,99,235,0.10)'   : 'rgba(37,99,235,0.06)',   stroke: isDarkMode ? 'rgba(56,189,248,0.5)'  : 'rgba(37,99,235,0.5)',  label: '10–30 m\n15 cm' },
+                { r_min: 30, r_max: 60,  res: '30 cm', fill: isDarkMode ? 'rgba(234,88,12,0.08)'   : 'rgba(234,88,12,0.05)',   stroke: isDarkMode ? 'rgba(251,146,60,0.5)'  : 'rgba(234,88,12,0.45)', label: '30–60 m\n30 cm' },
+                { r_min: 60, r_max: 100, res: '50 cm', fill: isDarkMode ? 'rgba(139,92,246,0.07)'  : 'rgba(139,92,246,0.04)',  stroke: isDarkMode ? 'rgba(167,139,250,0.45)': 'rgba(109,40,217,0.4)', label: '60–100 m\n50 cm' },
+            ];
 
-                ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.4)' : '#64748b';
-                ctx.font = '600 9px JetBrains Mono';
-                ctx.fillText(`${r}m`, cx + 4, cy - rad + 11);
+            BANDS.forEach(band => {
+                const rInner = band.r_min * scale;
+                const rOuter = band.r_max * scale;
+                // Filled annulus
+                ctx.beginPath();
+                ctx.arc(cx, cy, rOuter, 0, Math.PI * 2, false);
+                ctx.arc(cx, cy, Math.max(rInner, 0.5), 0, Math.PI * 2, true);
+                ctx.fillStyle = band.fill;
+                ctx.fill();
+                // Boundary stroke
+                ctx.lineWidth = band.r_min === 0 ? 1 : 1.5;
+                ctx.strokeStyle = band.stroke;
+                ctx.beginPath();
+                ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
+                ctx.stroke();
+                // Band label at NW
+                const labelAngle = -Math.PI * 0.62;
+                const labelR = (rInner + rOuter) / 2;
+                const lx = cx + Math.cos(labelAngle) * labelR;
+                const ly = cy + Math.sin(labelAngle) * labelR;
+                ctx.font = 'bold 8px JetBrains Mono';
+                ctx.fillStyle = band.stroke;
+                ctx.textAlign = 'center';
+                const lines = band.label.split('\n');
+                lines.forEach((ln, i) => ctx.fillText(ln, lx, ly + i * 10));
+                ctx.textAlign = 'left';
             });
 
             // Radial Azimuth Rays
             for (let a = 0; a < 360; a += 45) {
                 const rad = a * Math.PI / 180;
-                ctx.strokeStyle = isDarkMode ? 'rgba(56, 189, 248, 0.08)' : 'rgba(226, 232, 240, 0.8)';
+                ctx.strokeStyle = isDarkMode ? 'rgba(56, 189, 248, 0.06)' : 'rgba(226, 232, 240, 0.7)';
+                ctx.lineWidth = 0.5;
                 ctx.beginPath();
                 ctx.moveTo(cx, cy);
-                ctx.lineTo(cx + Math.sin(rad) * 60 * scale, cy - Math.cos(rad) * 60 * scale);
+                ctx.lineTo(cx + Math.sin(rad) * 100 * scale, cy - Math.cos(rad) * 100 * scale);
                 ctx.stroke();
             }
+
+            // Minor range tick labels
+            [10, 20, 30, 40, 50, 60, 80, 100].forEach(r => {
+                const rad = r * scale;
+                ctx.font = '600 8px JetBrains Mono';
+                ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.35)' : '#94a3b8';
+                ctx.fillText(`${r}m`, cx + 4, cy - rad + 10);
+            });
 
             // Draw Active 2.5D Cells from C++ Quadtree Grid
             let terrainCount = 0, staticCount = 0, dynCount = 0;
@@ -2009,19 +2171,27 @@
 
                     const sx = cx - cell.y * scale;
                     const sy = cy - cell.x * scale;
-                    if (sx < 0 || sx > w || sy < 0 || sy > h) return;
-                    const sz = Math.max(2, cell.res * scale * 0.95);
+                    if (sx < -10 || sx > w + 10 || sy < -10 || sy > h + 10) return;
+
+                    // Cell size: use actual width/height from server if available
+                    const cellW = (cell.w || cell.res) * scale;
+                    const cellH = (cell.h || cell.res) * scale;
+                    const sz = Math.max(1.5, Math.min(cellW, cellH) * 0.95);
+
+                    // Depth-based brightness: deeper quadtree nodes = brighter (more refined)
+                    const depth = cell.depth || 0;
+                    const alpha = 0.35 + Math.min(depth, 6) * 0.09; // 0.35 → 0.89
 
                     if (cell.class === 2) {
-                        ctx.fillStyle = 'rgba(234, 88, 12, 0.95)';
+                        ctx.fillStyle = `rgba(234, 88, 12, ${Math.min(alpha + 0.3, 0.98)})`;
                         ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
                         dynCount++;
                     } else if (cell.class === 1) {
-                        ctx.fillStyle = 'rgba(37, 99, 235, 0.75)';
+                        ctx.fillStyle = `rgba(37, 99, 235, ${alpha + 0.1})`;
                         ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
                         staticCount++;
                     } else {
-                        ctx.fillStyle = 'rgba(5, 150, 105, 0.55)';
+                        ctx.fillStyle = `rgba(5, 150, 105, ${alpha})`;
                         ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
                         terrainCount++;
                     }
@@ -2098,35 +2268,122 @@
             ctx.textAlign = 'left';
 
             // HUD Legend on 2.5D Canvas
-            const hudX = 14, hudY = h - 72;
-            ctx.fillStyle = isDarkMode ? 'rgba(6,9,14,0.88)' : 'rgba(255, 255, 255, 0.95)';
+            const hudX = 14, hudY = h - 136;
+            ctx.fillStyle = isDarkMode ? 'rgba(6,9,14,0.92)' : 'rgba(255, 255, 255, 0.96)';
             ctx.strokeStyle = isDarkMode ? 'rgba(56,189,248,0.2)' : '#cbd5e1';
             ctx.lineWidth = 1;
-            ctx.fillRect(hudX - 4, hudY - 12, 210, 74);
-            ctx.strokeRect(hudX - 4, hudY - 12, 210, 74);
+            ctx.fillRect(hudX - 4, hudY - 12, 230, 134);
+            ctx.strokeRect(hudX - 4, hudY - 12, 230, 134);
 
             ctx.font = 'bold 9px JetBrains Mono';
             ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.85)' : '#334155';
-            ctx.fillText('2.5D OCCUPANCY GRID', hudX, hudY);
+            ctx.fillText('ADAPTIVE 2.5D RESOLUTION MAP', hudX, hudY);
 
-            ctx.fillStyle = '#059669';
-            ctx.fillRect(hudX, hudY + 8, 8, 8);
-            ctx.font = '9px JetBrains Mono';
-            ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.75)' : '#475569';
-            ctx.fillText(`Terrain: ${terrainCount.toLocaleString()} cells`, hudX + 14, hudY + 15);
+            // Semantic classes
+            const semRows = [
+                { color: '#059669', label: `Terrain: ${terrainCount.toLocaleString()} cells` },
+                { color: '#ea580c', label: `Dynamic: ${dynCount.toLocaleString()} cells` },
+                { color: '#2563eb', label: `Static: ${staticCount.toLocaleString()} cells` },
+            ];
+            semRows.forEach((row, i) => {
+                ctx.fillStyle = row.color;
+                ctx.fillRect(hudX, hudY + 10 + i * 14, 8, 8);
+                ctx.font = '8.5px JetBrains Mono';
+                ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.75)' : '#475569';
+                ctx.fillText(row.label, hudX + 14, hudY + 17 + i * 14);
+            });
 
-            ctx.fillStyle = '#ea580c';
-            ctx.fillRect(hudX, hudY + 22, 8, 8);
-            ctx.fillText(`Dynamic: ${dynCount.toLocaleString()} cells`, hudX + 14, hudY + 29);
-
-            ctx.fillStyle = '#2563eb';
-            ctx.fillRect(hudX, hudY + 36, 8, 8);
-            ctx.fillText(`Static: ${staticCount.toLocaleString()} cells`, hudX + 14, hudY + 43);
+            // Resolution band legend
+            ctx.font = 'bold 8px JetBrains Mono';
+            ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.6)' : '#64748b';
+            ctx.fillText('RESOLUTION BANDS:', hudX, hudY + 58);
+            const bandRows = [
+                { color: '#10b981', label: '0–10 m → 5 cm  (fine)' },
+                { color: '#3b82f6', label: '10–30 m → 15 cm' },
+                { color: '#f97316', label: '30–60 m → 30 cm' },
+                { color: '#8b5cf6', label: '60–100 m → 50 cm (coarse)' },
+            ];
+            bandRows.forEach((row, i) => {
+                ctx.fillStyle = row.color;
+                ctx.fillRect(hudX, hudY + 65 + i * 14, 8, 8);
+                ctx.font = '8px JetBrains Mono';
+                ctx.fillStyle = isDarkMode ? 'rgba(255,255,255,0.7)' : '#475569';
+                ctx.fillText(row.label, hudX + 14, hudY + 72 + i * 14);
+            });
         }
 
         // =========================================================================
         // BACKEND API CLIENT & PIPELINE TELEMETRY
         // =========================================================================
+
+        // ── BEV Canvas Hover Tooltip for Cell Inspection ──────────────────────
+        (function setupBevTooltip() {
+            const tooltip = document.getElementById('bevCellTooltip');
+            if (!tooltip) return;
+            const SEL_CLASSES = ['TERRAIN','STATIC STRUCTURE','DYNAMIC OBSTACLE'];
+            const SEL_COLORS  = ['#059669','#2563eb','#ea580c'];
+
+            document.getElementById('gridContainer').addEventListener('mousemove', (e) => {
+                if (!gridCells.length) { tooltip.style.display = 'none'; return; }
+                const canvas = document.getElementById('gridCanvas');
+                const rect = canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+
+                const w = canvas.width, h = canvas.height;
+                const canvasCx = w / 2, canvasCy = h / 2 + 30;
+                const scale = Math.min(w, h) / (100.0 * 2.2);
+
+                // Map mouse back to world coords
+                const worldY = -(mx - canvasCx) / scale;
+                const worldX =  (canvasCy - my) / scale;
+
+                // Find the closest cell whose bounds contain the world point
+                let best = null, bestDist = Infinity;
+                for (const cell of gridCells) {
+                    const hw = (cell.w || cell.res) / 2;
+                    const hh = (cell.h || cell.res) / 2;
+                    if (worldX >= cell.x - hw && worldX <= cell.x + hw &&
+                        worldY >= cell.y - hh && worldY <= cell.y + hh) {
+                        const d = (worldX-cell.x)**2 + (worldY-cell.y)**2;
+                        if (d < bestDist) { bestDist = d; best = cell; }
+                    }
+                }
+
+                if (!best) { tooltip.style.display = 'none'; return; }
+
+                const semIdx  = best.class || 0;
+                const semName = SEL_CLASSES[semIdx] || 'UNKNOWN';
+                const semCol  = SEL_COLORS[semIdx]  || '#fff';
+                const dist    = best.dist !== undefined ? best.dist.toFixed(1) : '?';
+                tooltip.innerHTML = [
+                    `<div style="font-weight:700;color:${semCol};margin-bottom:4px;font-size:9px;">${semName}</div>`,
+                    `<div><b>Pos:</b> (${best.x.toFixed(2)}, ${best.y !== undefined ? best.y.toFixed(2) : '?'}) m</div>`,
+                    `<div><b>Dist:</b> ${dist} m</div>`,
+                    `<div><b>Res:</b> <span style="color:var(--emerald);">${((best.res||0.05)*100).toFixed(0)} cm</span></div>`,
+                    `<div><b>Depth:</b> ${best.depth ?? '?'}</div>`,
+                    `<div><b>Elev:</b> ${(best.elev||0).toFixed(3)} m</div>`,
+                    `<div><b>Occ:</b> ${((best.occ||0)*100).toFixed(1)}%</div>`,
+                    `<div><b>Pts:</b> ${best.pc ?? '?'}</div>`,
+                    `<div><b>Conf:</b> ${((best.conf||0)*100).toFixed(0)}%</div>`,
+                    `<div><b>Size:</b> ${((best.w||best.res||0)*100).toFixed(0)} × ${((best.h||best.res||0)*100).toFixed(0)} cm</div>`,
+                ].join('');
+
+                // Position tooltip near cursor, keep in bounds
+                let tx = e.clientX - rect.left + 14;
+                let ty = e.clientY - rect.top  - 10;
+                if (tx + 180 > w) tx = mx - 190;
+                if (ty + 190 > h) ty = my - 200;
+                tooltip.style.left = tx + 'px';
+                tooltip.style.top  = ty + 'px';
+                tooltip.style.display = 'block';
+            });
+
+            document.getElementById('gridContainer').addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+            });
+        })();
+
         async function fetchLidarScan() {
             try {
                 const res = await fetch('/api/lidar/scan');
@@ -2242,6 +2499,49 @@
                 const dot = document.getElementById('pipelineStatusDot');
                 if (dot) { dot.style.background = '#ef4444'; }
             }
+        }
+
+        // Fetch adaptive-vs-uniform benchmark data from C++ /api/benchmark
+        async function fetchBenchmark() {
+            try {
+                const res = await fetch('/api/benchmark');
+                if (!res.ok) return;
+                const d = await res.json();
+                const ad = d.adaptive || {};
+                const un = d.uniform  || {};
+
+                const setCell = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+
+                // Summary row
+                setCell('bm_adapt_cells',    (ad.total_cells  || 0).toLocaleString());
+                setCell('bm_unif_cells',     (un.total_cells  || 0).toLocaleString());
+                setCell('bm_adapt_mem',      (ad.mem_mb       || 0).toFixed(2) + ' MB');
+                setCell('bm_unif_mem',       (un.mem_mb       || 0).toFixed(2) + ' MB');
+                setCell('bm_adapt_latency',  (ad.map_ms       || 0).toFixed(1) + ' ms');
+                setCell('bm_adapt_fps',      (ad.fps          || 0).toFixed(1) + ' Hz');
+                setCell('bm_adapt_berr',     (ad.boundary_errors || 0) + ' gaps');
+                setCell('bm_reduction_cells',(d.cell_reduction_pct || 0).toFixed(1) + '%');
+                setCell('bm_reduction_mem',  (d.mem_reduction_pct  || 0).toFixed(1) + '%');
+
+                // Per-band table
+                const tbody = document.getElementById('bmBandBody');
+                if (tbody && ad.bands && un.bands) {
+                    tbody.innerHTML = '';
+                    ad.bands.forEach((ab, i) => {
+                        const ub = un.bands[i] || {};
+                        const tr = document.createElement('tr');
+                        const BAND_COLORS = ['#10b981','#3b82f6','#f97316','#8b5cf6'];
+                        tr.innerHTML = `
+                            <td style="color:${BAND_COLORS[i]};font-weight:700;">${ab.label || ab.res_cm+'cm'}</td>
+                            <td>${(ab.cells||0).toLocaleString()}</td>
+                            <td>${(ub.cells||0).toLocaleString()}</td>
+                            <td style="color:var(--emerald);font-weight:700;">${ab.res_cm} cm</td>
+                            <td style="color:#94a3b8;">5 cm</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            } catch (_) {}
         }
 
         async function stepSequenceNext() {
@@ -2519,6 +2819,10 @@
         window.addEventListener('DOMContentLoaded', () => {
             initThree();
             fetchLidarScan();
+            fetchBenchmark();
+
+            // Benchmark: poll every 5 s
+            setInterval(fetchBenchmark, 5000);
 
             // Polling status updates when paused
             setInterval(() => {

@@ -45,8 +45,8 @@ struct BoundingBox2D {
     float min_y{0.0f};
     float max_y{0.0f};
 
-    bool contains(float x, float y) const {
-        return (x >= min_x && x < max_x && y >= min_y && y < max_y);
+    bool contains(float x, float y, float eps = 1e-4f) const {
+        return (x >= min_x - eps && x < max_x + eps && y >= min_y - eps && y < max_y + eps);
     }
 
     float width() const { return max_x - min_x; }
